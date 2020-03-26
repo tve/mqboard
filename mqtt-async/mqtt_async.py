@@ -11,7 +11,7 @@
 # The imports below are a little tricky in order to support operation under Micropython as well as
 # Linux CPython. The latter is used for tests.
 
-VERSION = (0, 7, 0)
+VERSION = (0, 7, 3)
 
 import gc, socket, struct
 from binascii import hexlify

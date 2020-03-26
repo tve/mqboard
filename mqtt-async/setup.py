@@ -7,7 +7,7 @@ sys.path.append("..")
 import sdist_upip
 
 setup(name='micropython-mqtt',
-      version='0.7b2',
+      version='0.7b3',
       description='Reliable MQTT client for MicroPython using asyncio',
       long_description="MQTT client for Micropython using asyncio.\n"\
       "The implementation requires the new (in 2020) uasyncio built into Micropython. It provides\n"\
