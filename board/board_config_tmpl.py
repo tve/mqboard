@@ -11,5 +11,3 @@ location = "mqtest"
 wifi_ssid = 'my-ssid'
 wifi_pass = 'my-pass'
 mqtt_server = '192.168.0.1'
-mqtt_ident = 'esp32-test'
-mqtt_key = unhexlify(b'd9000000000000000000000000000024')

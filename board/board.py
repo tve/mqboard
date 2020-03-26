@@ -1,13 +1,15 @@
 # Board configuration so other modules don't need to be too board-specific
 import machine
 
+# Pull-in the specifics of the board from `board_config`. That should be the only file that is
+# customized for each board. It also contains passwords and keys and should thus not be checked into
+# version control. There should be a `board_confgi_tmpl.py` file around to use as template.
 # board_config needs to define:
-# - kind: board type name, like huzzah32, lolin-d32, ...
-# - location: short location name used in mqtt topics
+# - kind: board type name, like huzzah32, lolin-d32, ... used to pick the pin for the LED, etc
+# - location: short name for this board used in mqtt topics
 # - wifi_ssid: SSID to connect to
 # - wifi_pass: password
 # - mqtt_server: IP address or hostname
-# typically board_config.py is neither checked into version control nor published
 from board_config import *
 
 # ===== LED stuff and battery voltage stuff
@@ -21,15 +23,12 @@ if kind == "tve-bare":
     # bare esp32-wroom module with LED across IO23 and gnd
     lpin = machine.Pin(23, machine.Pin.OUT, None, value=1)
     led = lambda v: lpin(v)
-    #machine.Pin(25, machine.Pin.OUT, None, value=1)
-    #machine.Pin(27, machine.Pin.OUT, None, value=1)
 elif kind == "huzzah32":
     # Adafruit Huzzah32 feather
     lpin = machine.Pin(13, machine.Pin.OUT, None, value=1)
     led = lambda v: lpin(v)
-    #machine.Pin(25, machine.Pin.OUT, None, value=1)
-    #machine.Pin(27, machine.Pin.OUT, None, value=1)
 elif kind == "lolin-d32":
+    # Wemos Lolin D-32
     lpin = machine.Pin(5, machine.Pin.OUT, None, value=1)
     led = lambda v: lpin(not v)
     bat_volt_pin = machine.ADC(machine.Pin(35))
@@ -47,17 +46,17 @@ def get_battery_voltage():
     return measuredvbat
 
 # ===== MQTT stuff
-# defines config stuff for mqtt_as
+# defines config stuff for mqtt_async
+# in the app use `mqtt_async.MQTTClient(mqtt_async.config)`
 
 from mqtt_async import config
 config.server = mqtt_server
 config.ssid = wifi_ssid
 config.wifi_pw = wifi_pass
-config.listen_interval = 3
 
-# For demos ensure the same calling convention for LED's on all platforms.
-# ESP8266 Feather Huzzah reference board has active low LED's on pins 0 and 2.
-# ESP32 is assumed to have user supplied active low LED's on same pins.
+# For demos ensure the same calling convention for LEDs on all platforms.
+# ESP8266 Feather Huzzah reference board has active low LEDs on pins 0 and 2.
+# ESP32 is assumed to have user supplied active low LEDs on same pins.
 # Call with blue_led(True) to light
 
 # TinyPICO has an RGB LED so we use the red channel for WiFi and the blue

@@ -5,9 +5,7 @@ sys.path.append('/src')
 
 import board
 
-#import webrepl
-#webrepl.start()
-
+# connect_wifi is a handy little function to manually connect wifi
 def connect_wifi():
     import network
     wlan = network.WLAN(network.STA_IF)
