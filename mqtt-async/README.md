@@ -1,8 +1,9 @@
 # MicroPython Asynchronous MQTT
 
-The `mqtt_async` library implements the MQTT 3.1.1 protocol with support for
-QoS 0 and QoS 1 and using Micropython's new (in 2020) built-in asyncio / uasyncio.
-The implementation in this repository is a rewrite inspired by and largely API compatible with
+The `mqtt_async` library implements a MQTT 3.1.1 client with support for
+QoS 0 and QoS 1 messages. It uses Micropython's new (in 2020) built-in asyncio / uasyncio
+and supports streaming QoS 1 messages by overlapping processing with ACKs.
+The implementation is a rewrite inspired by and largely API compatible with
 [Peter Hinch's version](https://github.com/peterhinch/micropython-mqtt).
 
 Some of the special features of this library:
@@ -10,23 +11,28 @@ Some of the special features of this library:
 - Supports QoS 0 and QoS 1 with automatic retries when sending QoS 1 messages.
 - Automatic keep-alive messages and disconnect/reconnect when the connection to the broker ceases to
   function.
-- Disconnect/reconnect first acts at the TCP connection level but then moves to reconnect Wifi.
+- Disconnect/reconnect first acts at the TCP connection level and only when unsuccessful moves
+  to reconnect Wifi.
 - Publishing messages at QoS 1 can be asynchronous such that the application can proceed before an
   ACK is received from the broker.
 
-Feature that need a little more work:
-- Support starting with a clean session or resuming from a previous session.
+Features that need a little more work:
+- Support starting with a clean session or resuming from a previous session (this still needs a
+  little tweaking).
 - Support TLS.
+
+`mqtt_async` is published under an MIT license.
 
 ## Getting Started
 
-This README assumes basic familiarity with MQTT and MicroPython.
+This library **requires** the use of the new `uasyncio` module built-into MicroPython as of the
+merge of [PR 5796](https://github.com/micropython/micropython/pull/5796) on March 25th 2020. In
+terms of MP releases this will mean V1.13 or greater. I highly recommend building MP from source
+yourself, but there is a download available, see below.
 
 ### Installation
 
-This library **requires** the use of the new `uasyncio` module built-into MicroPythonA as of the
-merge of [PR 5796](https://github.com/micropython/micropython/pull/5796) on March 25th 2020. In
-terms of MP releases this will mean V1.13 or greater.
+You can install the library using upip as follows:
 
 ```
 import upip
@@ -40,6 +46,8 @@ Alternatively, you can:
 - skip `micropython-logging` as there is a fall-back
 
 ### Hello World
+
+The following code is also available as `hello_world.py` in this repo.
 
 ```
 from mqtt_async import MQTTClient, config
@@ -85,53 +93,69 @@ publish 2
 
 Next, check out the API docs further down...
 
+### MicroPython download
+
+A version of MP for the esp32 using ESP-IDFv4 with the new uasyncio built-in can be download from
+http://micropython.org/resources/firmware/esp32-idf4-20200326-v1.12-307-gad004db66.bin
+(or as backup
+https://s3.amazonaws.com/s3.voneicken.com/micropython-esp32-master-ad004db.bin).
+To load it onto your board use something like:
+```
+esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 460800 write_flash -z --flash_mode dio \
+--flash_freq 40m 0x1000 esp32-idf4-20200326-v1.12-307-gad004db66.bin
+```
+
 ## Implementation Specifics
 
 ### Hardware platforms.
 
-This library has been tested with Micropython compiled with ESP-IDFv4 on an esp32.
-MP with ESP-IDFv3 has not been tested.
+This library has been tested with Micropython compiled with ESP-IDFv4 on an esp32, this is the
+recommended configuration.
+Using ESP-IDFv3 has not been tested.
 
 This library contains code to handle the esp8266 but it has not been tested, except to determine
 that the library has to be frozen into the firmware in order to be usable. (This is the same
-situation as with `mqtt_as`.)  The author does not expect to test the esp8266 but will accept PRs to
-fix any issues.
+situation as with `mqtt_as`.)  The author does not expect to test with the esp8266 but will
+accept PRs to fix any issues.
 
 ### Compatibility with the original mqtt_as
 
-The API of MQTTClient between the original `mqtt_as` and the new `mqtt_async` is largely the same,
-see below for changes.
-The implementation, however, has been modified significantly:
+The API of MQTTClient in `mqtt_async` is largely the same as the original `mqtt_as`,
+see below for incompatible changes.
+The implementation, however, has been rewritten resulting in the following changes:
 
 1. Support sending streams of MQTT messages at QoS=1 without blocking for an ACK after each message.
    This allows streaming of data using relatively small messages at high data rates.
-2. Almost full test coverage via automated tests. The lower-level protocol class is tested on a
-   Micropython board against a real broker to ensure that the protocol works and that failures are
+1. Almost full test coverage via automated tests. The lower-level protocol class is tested on a
+   Micropython board against a real broker to ensure protocol correctness and that failures are
    reported appropriately.
    The higher-level client class is tested on linux using a simulated protocol class to test
    failures and retransmissions.
-3. The implementation is completely reorganized to facilitate automated testing, to correctly handle
-   retransmissions across connection reconnects and to enable the implementation of the streaming.
+1. The implementation is completely reorganized to facilitate automated testing and to accurately
+   handle retransmissions across connection reconnects which enables the implementation of the
+   streaming.
    Specifically, the implementation is split such that a lower-level class (`MQTTProto`) implements
    the protocol on a single socket and a higher-level class (`MQTTClient`) implements the
    reconnection and retransmission logic.
-4. Messages that normally fit into a TCP packet get sent as a single packet on the wire to reduce
+1. Messages that normally fit into a TCP packet get sent as a single packet on the wire to reduce
    overall overhead thereby improving performance.
-4. Retransmission of messages on an existing TCP connection is eliminated because it is totally
+1. Retransmission of messages on an existing TCP connection is eliminated because it is
    pointless given that TCP implements a reliable stream (it is impossible for an application to
    receive data that was sent on a connection after previous data got "lost" or "corrupted").
-   Instead, if no ACK is received the retransmission uses a fresh connection from the get-go.
-5. Correctly retransmit packets on a fresh connection using the original PID (packet ID) to
-   avoid unnecessary duplicate packets. The original implementation used a fresh PID due to a bug
-   that made it look like Mosquitto wasn't accepting the retransmission.
-6. When reconnecting, first do so at the TCP level without tearing Wifi down to minimize the
+   Instead, if no ACK is received, the retransmission uses a fresh connection from the get-go.
+1. Accurately retransmit packets on a fresh connection using the original PID (packet ID) to
+   avoid unnecessary duplicate packets.
+1. When reconnecting, first do so at the TCP level without tearing Wifi down to minimize the
    disruption, only disconnect/reconnect Wifi if the TCP reconnect doesn't work.
-7. Eliminate `clean_init` config param and only use clean config param, see below.
-8. Structure imports and work-arounds such that `mqtt_async` can be used in CPython and tests can
+1. Eliminate `clean_init` config param and only use clean config param, see below.
+1. Structure imports and work-arounds such that `mqtt_async` can be used in CPython and tests can
    use `pytest`.
-9. Use the standard logging facility instead of ad-hoc debug messages.
+1. Use the standard logging facility instead of ad-hoc debug messages.
 
 #### API incompatibilities
+
+Some features work slightly differently in `mqtt_async` vs. `mqtt_as` but the following
+incompatibilities prevent anything from working by just changing the import statement:
 
 - the `subs_cb` callback has 4 parameters, adding a qos parameter.
 - the `will` config has been changed from a tuple to an `MQTTMessage`.
@@ -148,36 +172,60 @@ are all sent to the same topic using QoS=1. The protocol guarantees in-order del
 messages such that the receiver can easily process them and only needs to check for duplicates, this
 is codified in [section 4.6 of the MQTT 3.1.1 spec](http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc398718105).
 
-When sending messages using `publish()` the default is to send the message and then block to wait
-for an MQTT-level ACK. This wait has a significant impact on rate at which a stream of small
-messages can be transmitted.
-The implementation here adds a `sync` parameter to `publish()` which, if set to `False`, omits
-the wait allowing the application to explicitly verify whether an ACK has been received later.
+When sending messages using `publish()` the default (`sync=True`) is to send the message and
+then block to wait for an MQTT-level ACK.
+This wait impacts the rate at which a stream of small messages can be transmitted.
+`mqtt_async` adds a `sync` parameter to `publish()` which, if set to `False`, omits
+the wait allowing the wait for the ACK to be overlapped with producing the next message.
 
-In order to send N messages in-order reliably an application can send the first N-1 messages
+In order to send N messages reliably in-order an application can send the first N-1 messages
 using `qos=1` and `sync=False` and then send the last message using `qos=1` and`sync=True`.
 Once the last publish completes the broker has received all messages in order.
-(Note that the in-order guarantee only applies if the N messages are sent to one and the same topic.)
+(Note that the in-order guarantee only applies if the N messages are sent to one and the same
+topic!)
+
+From a throughput point of view on an esp32 sending messages with a payload of 2800 bytes appears
+close to optimal.
+This size fits into two TCP segments (unless the topic is very long or the packets go through a network
+link with unusually low MSS) and can generally be pushed into the network stack without blocking.
+Use 1400 bytes to make messages fit into one TCP segment.
 
 ### How to use the clean session flag
 
 FIXME: the implementation still needs some tweaking...
 
-The clean session flag specifies whether the broker should retain state between connections for
-a specific client ID.
-The state includes subscriptions and pending/queued messages.
-Something that is slighly confusing is that if a connection specifies `clean=True` then the state
-is cleared before *and* after the connection.
-As a result the two primary modes of operation should be:
-1. Clients that don't need state to be preserved should connect with `clean=True` and must re-issue
-   all subscriptions in the `connect_coro`. Messages queued at the broker when a connection ends and
-   a new one is established, which happens automatically in MQTTClient when there is a failure, will
-   be lost.
-2. Clients that do need state to be preserved should always connect with `clean=False`. The
-   confusing part is that it is often desirable to clean the state on cold-boot or when a new
-   software version is loaded in order to avoid having incorrect subscriptions active that are no
-   longer relevant. In order to achieve that the client should connect with `clean=True`,
-   immediately disconnect, and then reconnect with `clean=False` and proceed.
+In MQTT the broker stores some data for each client, specifically the list of subscriptions and any
+pending or unacked messages. This storage allows clients to disconnect and reconnect without loosing
+messages. The `clean` flag allows a client to signal to the broker to drop any stored data and start
+afresh. This is useful when the application changes and needs a different set of subscriptions or
+when a client starts and does not want a deluge of possibly old messages to be delivered.
+
+Unfortunately the semantics of the MQTT `clean` session flag are a little more complicated than it may
+seem at first sight. The `mqtt_async` library implements the following two use-cases:
+1. Clients that want a clean slate as they connect, i.e. no old subscriptions and no queued
+   messages, should set `config.clean = True`. Under the hood the `MQTTClient` will connect with
+   `clean=True`, then disconnect and reconnect with `clean=False`. All subsequent automatic
+   reconnections will use `clean=False`. (FIXME: the disconnect-reconnect is not yet fully
+   implemented.)
+2. Clients that want to not miss any messages while they we reset or updated should set
+   `clean=False`. Under the hood the `MQTTClient` will use that setting for all its connections.
+
+It does not seem to make sense for `MQTTClient` to set `clean=True` for any of its automatic
+reconnections. Any use-case that might suggest that is probably a poor match for `mqtt_async` and
+could use a much simpler library.
+
+Note that all the above discussion about saved state is linked to the client ID (set in
+`config.client_id`). An application can also get a slean slate by switching to a different
+client id.
+
+As note to the interested, the connect-disconnect-reconnect to implement the "clean slate" semantics
+is necessary because of the following statement from the spec:
+
+> If CleanSession is set to 1, the Client and Server MUST discard any previous Session and start a new one. This Session lasts as long as the Network Connection. State data associated with this Session MUST NOT be reused in any subsequent Session [MQTT-3.1.2-6].
+
+The last sentence means that state is dropped not just at the start but also at the end of that
+session, which would mean that if a network hiccup caused a disconnect-reconnect in `MQTTClient` state
+would be lost.
 
 ### Testing strategy
 
@@ -197,12 +245,14 @@ socket operations correctly and formats and parses MQTT messages properly. To ru
 a real broker fix-up the broker info at the start of the file and run `pytest test_proto.py`. These
 tests can also be run on a Micropython board to ensure that the idiosyncracies of the socket
 interface there are handled correctly. For this purpose start by manually connecting your board to
-Wifi, then run something like `pyboard <options> -f cp mqtt_async.py :` followed by
-`pyboard <options> test_proto.py`.
+Wifi, then run something like `pyboard -f cp mqtt_async.py :` followed by
+`pyboard test_proto.py`.
 
 With the broker info fixed-up in `test_proto.py` it is also possible to run
 `pytest --cov=mqtt_async --cov-report=html` to run all tests and produce a code coverage report in
 `./htmlcov`. As of this writing the coverage is in the high eighties percent.
+
+`test-bench.py` is a benchamrk to test the performance of streaming publishing vs. non-streaming.
 
 `test-tcp.py` is a low-level test that can be run manually on a board to test the behavior of the
 socket library and networking stack. It requires simulating failures manually for example using
@@ -216,27 +266,27 @@ creating a session. It is not useful as a unit test and kept for posteriority...
 
 ## MQTTClient class
 
-### `__init__(config)`
+#### `__init__(config)` (constructor)
 
-The constructor initializes an MQTTClient instance with the provided configuration.
-The config must be an instance of the MQTTConfig class and is typically put together
-by modifying the default `mqtt_async.config` instance. The MQTTConfig fields can be accessed
+The constructor initializes an `MQTTClient` instance with the provided configuration.
+The config must be an instance of the `MQTTConfig` class and is typically put together
+by modifying the default `mqtt_async.config` instance. The `MQTTConfig` fields can be accessed
 either as class fields or using the `['field_name']` map syntax.
 
-The following MQTTConfig fields must be set:
-- `server`: [`None`] MQTT broker hostname or IP address, no default.
+The following `MQTTConfig` fields must be set:
+- `server`: MQTT broker hostname or IP address, no default.
 - `connect_coro`: `async def` function that is run when the first MQTT connection is established, it
   should subscribe to the desired topics, default: None.
 - `subs_cb`: `def` or `async def` function that is run when a message arrives on a topic, default:
   None.
 
-The following MQTTConfig fields are optional but recommended:
+The following `MQTTConfig` fields are optional but recommended:
 - `ssid`: WiFi SSID to connect or reconnect Wifi in case of failure, default: None.
 - `wifi_pw`: WiFi password, default: None.
 - Note that the esp8266 does not require the wifi info if it has previously connected as it remebers
   the last used credentials.
 
-Optional MQTTConfig fields:
+Optional `MQTTConfig` fields:
 - `ssl_params`: enable TLS with the provided parameters, default: None (disable TLS/SSL). *Not yet
   supported*
 - `connect_coro`: `async def` function that is run with a `status` parameter when an MQTT connection
@@ -244,7 +294,7 @@ Optional MQTTConfig fields:
 - `port`: MQTT broker port, default: 0 which means 8883 if TLS is used, else 1883.
 - `client_id`: MQTT client id, must be a `bytes` instance, default: `machine.unique_id()` in hex.
 - `user`: MQTT credentials (if required).
-- `password` [`''`] MQTT password for `user`.
+- `password` MQTT password for `user`.
 - `clean`: start a clean MQTT session, see above for a discussion, default: False.
 - `response_time`: Time in seconds given to the broker to respond before a connection is restarted,
   applies to sub-suback, pub-puback, and ping-pingresp intervals. Default: 10.
@@ -254,14 +304,14 @@ Optional MQTTConfig fields:
   `config.set-last-will(topic, message, retain, qos)`, default: None.
 - `interface`: should be `network.WLAN(network.STA_IF)` or `WLAN(network.AP_IF)`, default: `STA_IF`.
 
-### `connect()` (async)
+#### `connect()` (async)
 
 No args. Connects to the specified broker. The application should call
 `connect` once on startup. If this fails (due to WiFi or the broker being
 unavailable) an `OSError` will be raised. Subsequent reconnections after
 outages are handled automatically.
 
-### `publish(topic, msg, retain=False, qos=0, sync=True)` (async)
+#### `publish(topic, msg, retain=False, qos=0, sync=True)` (async)
 
 Publishes the messages with the provided parameters. Topic and msg should be `bytes` but `str` is
 also accepted and automatically encoded.
@@ -276,7 +326,7 @@ If `sync=True` it waits for the just-sent message to be ACKed and then returns.
 If the connection gets dropped at any point in time `publish` automatically retransmits any unACKed
 message.
 
-### `subscribe(topic, qos=0)` (async)
+#### `subscribe(topic, qos=0)` (async)
 
 Subscribes to a topic and awaits an ACK from the broker.
 The `qos` parameter specifies at which QoS level the messages will be transmitted by the broker.
@@ -289,7 +339,7 @@ When messages arrive on subscriptions the `subs_cb` is called with the topic, me
 and QoS level as parameters. The `subs_cb` may be a plain function or an `async def` function. For
 incoming QoS=1 messages an acknowledgment is sent to the broker once `subs_cb` returns.
 
-### `disconnect()` (async)
+#### `disconnect()` (async)
 
 Sends a disconnect message to the broker and closes the connection. Sending the disconnect message
 suppresses the last-will message in the broker.
@@ -299,9 +349,9 @@ instead.
 
 ### Logging
 
-`mqtt_async` uses the standard logging facility with a logger called `mqtt_async`.
+`mqtt_async` uses the standard logging facility through `getLogger("mqtt_async")`.
 By default this seems to print INFO messages and higher.
-If the `logging` module is not available some simple stand-ins are used.
+If the `logging` module is not available some simple fall-back functions are used.
 
 A simple way to tune the logging from your application is:
 
@@ -314,7 +364,7 @@ Use the `WARNING` level to suppress more messages.
 ### Timeouts
 
 The `MQTTClient` functions do not use timeouts, that is, if the broker does not respond (possibly
-due to there being no connectivity) calls will block forever. Use `asyncio.wait_for()` to introduce
+due to there being no connectivity) calls may block forever. Use `asyncio.wait_for()` to introduce
 timeouts if desired.
 
 ### Not supported
@@ -339,4 +389,3 @@ an application raises an exception or is terminated with ctrl-C.
 [mosquitto client subscribe](http://mosquitto.org/man/mosquitto_sub-1.html)  
 [MQTT 3.1.1 spec](http://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html#_Toc398718048)  
 [python client for PC's](https://www.eclipse.org/paho/clients/python/)  
-[Unofficial MQTT FAQ](https://forum.micropython.org/viewtopic.php?f=16&t=2239)
