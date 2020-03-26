@@ -11,7 +11,7 @@
 # The imports below are a little tricky in order to support operation under Micropython as well as
 # Linux CPython. The latter is used for tests.
 
-VERSION = (0, 7, 3)
+VERSION = (0, 7, 4)
 
 import gc, socket, struct
 from binascii import hexlify
@@ -85,7 +85,7 @@ class MQTTConfig:
         self.keepalive       = 600 # in seconds, only sent if self.will != None
         self.ssl_params      = None
         self.interface       = STA_IF
-        self.clean           = False
+        self.clean           = True
         self.will            = None             # last will message, must be MQTTMessage
         self.subs_cb          = lambda *_: None  # callback when message arrives for a subscription
         self.wifi_coro       = None             # notification when wifi connects/disconnects

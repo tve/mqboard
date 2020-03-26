@@ -15,10 +15,9 @@ Some of the special features of this library:
   to reconnect Wifi.
 - Publishing messages at QoS 1 can be asynchronous such that the application can proceed before an
   ACK is received from the broker.
+- Support starting with a clean session or resuming from a previous session.
 
 Features that need a little more work:
-- Support starting with a clean session or resuming from a previous session (this still needs a
-  little tweaking).
 - Support TLS.
 
 `mqtt_async` is published under an MIT license.
@@ -205,8 +204,7 @@ seem at first sight. The `mqtt_async` library implements the following two use-c
 1. Clients that want a clean slate as they connect, i.e. no old subscriptions and no queued
    messages, should set `config.clean = True`. Under the hood the `MQTTClient` will connect with
    `clean=True`, then disconnect and reconnect with `clean=False`. All subsequent automatic
-   reconnections will use `clean=False`. (FIXME: the disconnect-reconnect is not yet fully
-   implemented.)
+   reconnections will use `clean=False`.
 2. Clients that want to not miss any messages while they we reset or updated should set
    `clean=False`. Under the hood the `MQTTClient` will use that setting for all its connections.
 
@@ -295,7 +293,7 @@ Optional `MQTTConfig` fields:
 - `client_id`: MQTT client id, must be a `bytes` instance, default: `machine.unique_id()` in hex.
 - `user`: MQTT credentials (if required).
 - `password` MQTT password for `user`.
-- `clean`: start a clean MQTT session, see above for a discussion, default: False.
+- `clean`: start a clean MQTT session, see above for a discussion, default: True.
 - `response_time`: Time in seconds given to the broker to respond before a connection is restarted,
   applies to sub-suback, pub-puback, and ping-pingresp intervals. Default: 10.
 - `keepalive`: Time in seconds before broker regards client as having died and sends a last-will
