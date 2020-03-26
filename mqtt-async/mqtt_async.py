@@ -516,18 +516,18 @@ class MQTTClient():
     async def connect(self):
         if self._state > 1:
             raise ValueError("cannot reuse")
+        clean = False
         # deal with wifi and dns
         if not self._c.interface.isconnected():
             await self.wifi_connect()
-        # Note the following blocks if DNS lookup occurs. Do it once to prevent
-        # blocking during later internet outage:
         if self._state == 0:
-            self._dns_lookup()
+            self._dns_lookup() # DNS is blocking, do it only the first time around
+            clean = self._c.clean
         # actually open a socket and connect
         proto = self._MQTTProto(self._c.subs_cb, self._got_puback, self._got_suback,
-                self._got_pingresp, self._c.sock_cb)
+                self._got_pingresp)
         # FIXME: need to use a timeout here!
-        await proto.connect(self._addr, self._c.client_id, self._c.clean,
+        await proto.connect(self._addr, self._c.client_id, clean,
                 user=self._c.user, pwd=self._c.password, ssl_params=self._c.ssl_params,
                 keepalive=self._c.keepalive,
                 lw=self._c.will) # raises on error
@@ -535,6 +535,13 @@ class MQTTClient():
         # update state
         if self._state == 0:
             self._state = 1
+            # this is the first time we connect, if we asked for a clean session we need to
+            # disconnect and reconnect with clean=False so the broker doesn't drop all the state
+            # when we get our first disconnect due to network issues
+            if clean:
+                await self._proto.disconnect()
+                self._proto = None
+                return await self.connect()
         elif self._state > 1:
             await self.disconnect() # whoops, someone called disconnect() while we were connecting
             raise OSError(-1, "disconnect while connecting")

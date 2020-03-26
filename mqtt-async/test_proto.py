@@ -1,6 +1,6 @@
 # Test MQTTProto in mqtt_as.py
 # This test runs under pytest on linux: pytest --cov=mqtt_as --cov-report=html
-# It also runs in micropython: ./pyb test_proto.py
+# It also runs in micropython: pyboard test_proto.py
 
 #try:
 #    import pytest

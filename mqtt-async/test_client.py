@@ -189,6 +189,7 @@ def fresh_config():
     conf.server = broker[0]
     conf.port = broker[1]
     conf.client_id = "{}-{}".format(cli_id, cli_num)
+    conf.ssid = 'testme'
     cli_num += 1
     conf.wifi_coro = wifi_coro
     conf.subs_cb = subs_cb
@@ -213,7 +214,7 @@ async def connect_subscribe(topic, qos, clean=True, fake=True):
     await mqc.subscribe(topic, qos)
     return (mqc, conf)
 
-async def finish_test(mqc, conns=1):
+async def finish_test(mqc, conns=2): # default to conns=2 because clean is True by default
     # initiate disconnect
     await mqc.disconnect()
     assert mqc._proto is None
@@ -318,7 +319,7 @@ def test_init_errors():
 @pytest.mark.asyncio
 async def test_connect_disconnect():
     conf = fresh_config()
-    conf.debug = 1
+    conf.clean = False
     mqc = MQTTClient(conf)
     mqc._MQTTProto = FakeProto
     assert mqc._state == 0
@@ -379,7 +380,7 @@ async def test_drop_qos1():
     assert msg_q[0].message == b'Hello2'
     assert mqc._proto != proto1 # we have reconnected in the process
     #
-    await finish_test(mqc, conns=2)
+    await finish_test(mqc, conns=3)
 
 # test a QoS 1 publication while the socket fails everything, it should reconnect
 @pytest.mark.asyncio
@@ -394,7 +395,7 @@ async def test_fail_qos1():
     assert msg_q[0].message == b'Hello3'
     assert mqc._proto != proto1 # we have reconnected in the process
     #
-    await finish_test(mqc, conns=2)
+    await finish_test(mqc, conns=3)
 
 # test a QoS 1 subscription while the socket drops everything, it should reconnect
 @pytest.mark.asyncio
@@ -410,7 +411,7 @@ async def test_drop_sub1():
     assert msg_q[0].message == b'Hello4'
     assert mqc._proto != proto1 # we have reconnected in the process
     #
-    await finish_test(mqc, conns=2)
+    await finish_test(mqc, conns=3)
 
 # test a QoS 1 subscription while the socket fails everything, it should reconnect
 @pytest.mark.asyncio
@@ -426,7 +427,7 @@ async def test_fail_sub1():
     assert msg_q[0].message == b'Hello5'
     assert mqc._proto != proto1 # we have reconnected in the process
     #
-    await finish_test(mqc, conns=2)
+    await finish_test(mqc, conns=3)
 
 # test reconnect failing multiple times
 @pytest.mark.asyncio
@@ -437,17 +438,17 @@ async def test_fail_reconnect():
     conn_fail = 2
     mqc._proto.fail = FAIL_CLOSED
     await asyncio.sleep_ms(20*RTT)
-    await finish_test(mqc, conns=4)
+    await finish_test(mqc, conns=5)
 
 # The following tests can also be run against a real broker. For this set FAKE=False and
-# run `pytest with -k async_`
+# run pytest with `-k async_`
 FAKE=True
 
 # test async pub
 @pytest.mark.asyncio
 async def test_async_pub_simple():
     topic = prefix+"async1"
-    mqc, conf = await connect_subscribe(topic, 1, clean=False, fake=FAKE)
+    mqc, conf = await connect_subscribe(topic, 1, fake=FAKE)
     #
     assert len(mqc._unacked_pids) == 0
     await mqc.publish(topic, "Hello1", qos=1, sync=False)
@@ -467,7 +468,7 @@ async def test_async_pub_simple():
 @pytest.mark.asyncio
 async def test_async_pub_ordering():
     topic = prefix+"async2"
-    mqc, conf = await connect_subscribe(topic, 1, clean=False, fake=FAKE)
+    mqc, conf = await connect_subscribe(topic, 1, fake=FAKE)
     #
     num = 20
     t0 = ticks_ms()
@@ -497,5 +498,5 @@ async def test_async_pub_ordering():
         assert msg_q[i].message == m.encode()
         i += 1
     #
-    await finish_test(mqc, conns=num//3+1)
+    await finish_test(mqc, conns=num//3+2)
 
