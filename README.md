@@ -3,7 +3,6 @@
 This repository contains libraries and tools for using MQTT on MicroPython boards, primarily on the
 ESP32.
 
-Index:
 - `mqtt-async` contains an MQTT client library that uses asyncio and forms the backbone of most other
   libraries and tools here. *Beta release*
 - `mqrepl` contains a library to run a REPL via MQTT, basically to be able to send filesystem and

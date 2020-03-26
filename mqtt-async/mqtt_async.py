@@ -11,6 +11,8 @@
 # The imports below are a little tricky in order to support operation under Micropython as well as
 # Linux CPython. The latter is used for tests.
 
+VERSION = (0, 7, 0)
+
 import gc, socket, struct
 from binascii import hexlify
 from errno import EINPROGRESS
@@ -43,9 +45,6 @@ except:
         def info(self, msg, *args): print(msg % (args or ()))
         def warning(self, msg, *args): print(msg % (args or ()))
     log = Logger()
-
-
-VERSION = (0, 7, 0)
 
 # Timing parameters and constants
 
@@ -82,21 +81,21 @@ class MQTTConfig:
         self.port            = 0
         self.user            = None
         self.password        = b''
-        self.conn_timeout    = 120 # in seconds
         self.response_time   = 10  # in seconds
         self.keepalive       = 600 # in seconds, only sent if self.will != None
         self.ssl_params      = None
         self.interface       = STA_IF
         self.clean           = False
-        self.max_repubs      = 4
         self.will            = None             # last will message, must be MQTTMessage
         self.subs_cb          = lambda *_: None  # callback when message arrives for a subscription
         self.wifi_coro       = None             # notification when wifi connects/disconnects
         self.connect_coro    = None             # notification when a MQTT connection starts
         self.ssid            = None
         self.wifi_pw         = None
-        self.listen_interval = 0                # Wifi listen interval for power save
-        self.sock_cb         = None             # callback for esp32 socket to allow bg operation
+        # The following are not currently supported:
+        #self.sock_cb         = None             # callback for esp32 socket to allow bg operation
+        #self.listen_interval = 0                # Wifi listen interval for power save
+        #self.conn_timeout    = 120 # in seconds
 
     # support map-like access for backwards compatibility
     def __getitem__(self, key):
@@ -178,7 +177,7 @@ class MQTTProto:
         await asyncio.sleep_ms(10) # sure sure this is needed...
         #if self._sock_cb is not None: # st socket event for mqrepl's use
         #    self._sock.setsockopt(socket.SOL_SOCKET, 20, self._sock_cb)
-        assert ssl_params is None # :-(
+        assert ssl_params is None, "TLS not yet supported" # :-(
         #if ssl_params is not None:
         #    log.debug("Wrapping SSL")
         #    import ssl
@@ -490,7 +489,7 @@ class MQTTClient():
                 s.connect(self._c.ssid, self._c.wifi_pw)
                 while s.status() == network.STAT_CONNECTING:  # Break out on fail or success. Check once per sec.
                     await asyncio.sleep(_CONN_DELAY)
-        else:
+        elif self._c.ssid:
             s.active(True)
             #log.debug("Connecting, li=%d", self._c.listen_interval)
             s.connect(self._c.ssid, self._c.wifi_pw)
@@ -501,6 +500,8 @@ class MQTTClient():
 #            else:
             while s.status() == network.STAT_CONNECTING:  # Break out on fail or success.
                 await asyncio.sleep_ms(200)
+        else:
+            raise OSError(-1, "no SSID to connect to Wifi")
 
         if not s.isconnected():
             log.warning("Wifi failed to connect")
