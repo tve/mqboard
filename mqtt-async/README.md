@@ -35,7 +35,7 @@ You can install the library using upip as follows:
 
 ```
 import upip
-upip.install('micropython-mqtt')
+upip.install('micropython-mqtt-async')
 upip.install('micropython-logging')
 ```
 

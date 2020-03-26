@@ -6,7 +6,7 @@ from setuptools import setup
 sys.path.append("..")
 import sdist_upip
 
-setup(name='micropython-mqtt',
+setup(name='micropython-mqtt-async',
       version='0.7b4',
       description='Reliable MQTT client for MicroPython using asyncio',
       long_description="MQTT client for Micropython using asyncio.\n"\

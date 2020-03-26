@@ -14,4 +14,6 @@ ESP32.
 
 For help, please post on https://forum.micropython.org 
 
+Note: this repository is not a fork or a clone of Peter Hinch's Micropython-MQTT project.
+
 For license info see the LICENSE file.
