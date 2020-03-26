@@ -210,7 +210,7 @@ async def test_open_fail():
         assert True == False, "Error: write on closed socket returned"
     except OSError as e:
         print(e)
-        assert e.args[0] == 111 # connection refused
+        assert e.args[0] == 114 or e.args[0] == 111 # 111=ECONNREFUSED, 114=ECONNRESET
     if False: # the following takes a while if enabled...
         print("Test bad host")
         try:
@@ -277,7 +277,7 @@ async def test_auth_succ():
     #
     await mqc.disconnect()
 
-if sys.platform != 'linux':
+if sys.implementation.name == 'micropython':
     loop = asyncio.get_event_loop()
     test_funs = [ n for n in dir() if n.startswith("test_")]
     print("Running tests explicitly:", test_funs)

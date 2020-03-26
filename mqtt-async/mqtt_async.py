@@ -20,16 +20,23 @@ from sys import platform
 
 try:
     # imports used with Micropython
+    # on Unix might need:
+    #import sys; sys.path.append("/home/src/esp32/micropython/extmod")
     from micropython import const
     from time import ticks_ms, ticks_diff
     import uasyncio as asyncio
     async def open_connection(addr):
+        print(addr)
         return ( await asyncio.open_connection(addr[0], addr[1]) )[0]
     gc.collect()
-    from machine import unique_id
-    gc.collect()
-    import network
-    STA_IF = network.WLAN(network.STA_IF)
+    try:
+        from machine import unique_id
+        gc.collect()
+        import network
+        STA_IF = network.WLAN(network.STA_IF)
+    except:
+        # work-arounds on unix micropython
+        from unix_fix import *
     gc.collect()
     def is_awaitable(f): return f.__class__.__name__ == 'generator'
 except:
