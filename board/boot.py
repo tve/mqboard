@@ -3,6 +3,9 @@
 import sys
 sys.path.append('/src')
 
+from esp32 import Partition as p
+print("Booting partition", p(p.RUNNING).info()[4])
+
 import board
 
 # connect_wifi is a handy little function to manually connect wifi

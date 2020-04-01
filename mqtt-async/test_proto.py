@@ -8,7 +8,7 @@
 #except:
 #    pass
 
-import sys
+import sys, socket
 from mqtt_async import MQTTProto, MQTTMessage, MQTTConfig
 import logging
 logging.basicConfig(level=logging.DEBUG)
@@ -151,7 +151,7 @@ async def test_coro_callback():
     pub_q = []
 
 async def test_close_write():
-    return # ==========================================================================
+    #return # ==========================================================================
     sr, sw = await asyncio.open_connection('192.168.0.14', 1883)
     print("connected")
     sw.close()
@@ -163,7 +163,8 @@ async def test_close_write():
         await sw.drain()
         assert True == False, "Error: drain on closed socket didn't raise"
     except OSError as e:
-        print("Got OSError:", e)
+        print("Got OSError:", e, "--", e.args)
+        assert e.args[0] == 9
 
 async def test_read_closed():
     global pub_q, puback_set, suback_map
@@ -182,7 +183,7 @@ async def test_read_closed():
     #
 
 async def test_write_closed():
-    return # ==========================================================================
+    #return # ==========================================================================
     global pub_q, puback_set, suback_map
     mqc = MQTTProto(got_pub, got_puback, got_suback, got_pingresp)
     # connect
@@ -197,7 +198,8 @@ async def test_write_closed():
         w = await mqc._as_write(b'\xf0Hello')
         assert True == False, "Error: write on closed socket returned"
     except OSError as e:
-        assert e.args[0] == 'Connection lost'
+        print("Got OSError:", e, "--", e.args)
+        assert e.args[0] == 9 # 9:EBADF
     #
 
 async def test_open_fail():
@@ -210,7 +212,7 @@ async def test_open_fail():
         assert True == False, "Error: write on closed socket returned"
     except OSError as e:
         print(e)
-        assert e.args[0] == 114 or e.args[0] == 111 # 111=ECONNREFUSED, 114=ECONNRESET
+        assert e.args[0] == 104 or e.args[0] == 111 # 111=ECONNREFUSED, 104=ECONNRESET
     if False: # the following takes a while if enabled...
         print("Test bad host")
         try:
@@ -277,14 +279,97 @@ async def test_auth_succ():
     #
     await mqc.disconnect()
 
+async def test_ssl_raw_blocking():
+    #addr = ('192.168.0.14', 8883)
+    #addr = socket.getaddrinfo('iot.eclipse.org', 8883)[0][-1]
+    addr = socket.getaddrinfo('test.mosquitto.org', 8883)[0][-1]
+    s = socket.socket()
+    s.setblocking(True)
+    try:
+        s.connect(addr)
+        print("connected!")
+    except Exception as e:
+        print("Connect raised:", e)
+        raise
+    yield asyncio.core._io_queue.queue_write(s)
+    try:
+        import ssl
+        s = ssl.wrap_socket(s)
+        print("wrapped!")
+    except Exception as e:
+        print("Wrap_socket raised:", e)
+        raise
+    try:
+        w = s.write(b'\x10\x1a\x00\x04MQTT\x04\x02\x00\x00\x00\x0emqtt_as_tester')
+        print("write returned:", w)
+    except Exception as e:
+        print("write raised:", e)
+        raise
+    try:
+        got = s.read(4)
+        print("read returned", len(got), len(got)==4 and got[0]==0x20 and got[3]==0 and got[1]==0x02)
+    except Exception as e:
+        print("read raised:", e)
+        raise
+    s.close()
+
+async def test_ssl_raw_nonblocking():
+    #addr = ('192.168.0.14', 8883)
+    #addr = socket.getaddrinfo('iot.eclipse.org', 8883)[0][-1]
+    addr = socket.getaddrinfo('test.mosquitto.org', 1883)[0][-1]
+    s = socket.socket()
+    s.setblocking(False)
+    try:
+        s.connect(addr)
+        print("connected!")
+    except Exception as e:
+        print("Connect raised:", e)
+        if e.args[0] != 115: raise # 115=EINPROGRESS
+    #yield asyncio.core._io_queue.queue_write(s)
+    if False:
+        try:
+            import ssl
+            s = ssl.wrap_socket(s)
+            print("wrapped!")
+        except Exception as e:
+            print("Wrap_socket raised:", e)
+            raise
+    try:
+        w = s.write(b'\x10\x1a\x00\x04MQTT\x04\x02\x00\x00\x00\x0emqtt_as_tester')
+        print("write returned:", w)
+    except Exception as e:
+        print("write raised:", e)
+        raise
+    await asyncio.sleep(0.3) # time for broker to respond
+    try:
+        got = s.read(4)
+        print("read returned", len(got), len(got)==4 and got[0]==0x20 and got[3]==0 and got[1]==0x02)
+    except Exception as e:
+        print("read raised:", e)
+        raise
+    s.close()
+
+async def test_ssl_default():
+    global pub_q, puback_set, suback_map
+    mqc = MQTTProto(got_pub, got_puback, got_suback, got_pingresp)
+    #addr = ('192.168.0.14', 8883)
+    #addr = socket.getaddrinfo('iot.eclipse.org', 8883)[0][-1]
+    addr = socket.getaddrinfo('test.mosquitto.org', 1883)[0][-1]
+    # connect with default ssl settings
+    await mqc.connect(addr, cli_id, True, ssl=None)
+            #ssl={'server_hostname':'micropython.org'})
+    assert mqc.last_ack != 0
+    #
+    await mqc.disconnect()
+
 if sys.implementation.name == 'micropython':
     loop = asyncio.get_event_loop()
     test_funs = [ n for n in dir() if n.startswith("test_")]
     print("Running tests explicitly:", test_funs)
     good = 0
     bad  = 0
-    #for test_fun in ['test_close_write']: #test_funs:
-    for test_fun in test_funs:
+    for test_fun in ['test_ssl_raw_blocking', 'test_ssl_raw_nonblocking', 'test_ssl_default']:
+    #for test_fun in test_funs:
         print("\n========= {} ==========".format(test_fun))
         try:
             loop.run_until_complete(eval(test_fun+'()'))

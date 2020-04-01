@@ -26,8 +26,8 @@ class StreamReadWriter:
     def close(self): self.sw.close()
     async def wait_closed(self): await self.sw.wait_closed()
 
-async def open_connection(addr):
-    (sr, sw) = await asyncio.open_connection(addr[0], addr[1])
+async def open_connection(addr, ssl):
+    (sr, sw) = await asyncio.open_connection(addr[0], addr[1], ssl=ssl)
     return StreamReadWriter(sr, sw)
 
 class __interface:

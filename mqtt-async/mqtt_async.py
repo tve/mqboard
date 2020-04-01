@@ -20,14 +20,13 @@ from sys import platform
 
 try:
     # imports used with Micropython
-    # on Unix might need:
-    #import sys; sys.path.append("/home/src/esp32/micropython/extmod")
+    # on Unix might need to set MICROPYPATH env var to locate extmod
     from micropython import const
     from time import ticks_ms, ticks_diff
     import uasyncio as asyncio
-    async def open_connection(addr):
+    async def open_connection(addr, ssl):
         print(addr)
-        return ( await asyncio.open_connection(addr[0], addr[1]) )[0]
+        return ( await asyncio.open_connection(addr[0], addr[1], ssl=ssl) )[0]
     gc.collect()
     try:
         from machine import unique_id
@@ -168,7 +167,7 @@ class MQTTProto:
     # Connect waits for the connection to get established and for the broker to ACK the connect packet.
     # It raises an OSError if the connection cannot be made.
     # Reusing an MQTTProto for a second connection is not recommended.
-    async def connect(self, addr, client_id, clean, user=None, pwd=None, ssl_params=None,
+    async def connect(self, addr, client_id, clean, user=None, pwd=None, ssl=None,
             keepalive=0, lw=None):
         if lw is None:
             keepalive = 0
@@ -177,18 +176,12 @@ class MQTTProto:
             # in principle, open_connection returns a (reader,writer) stream tuple, but in MP it
             # really returns a bidirectional stream twice, so we cheat and use only one of the tuple
             # values for everything.
-            self._sock = await open_connection(addr)
+            self._sock = await open_connection(addr, ssl)
         except OSError as e:
             if e.args[0] != EINPROGRESS:
+                print("OSError in open_connection:", e)
                 raise
         await asyncio.sleep_ms(10) # sure sure this is needed...
-        #if self._sock_cb is not None: # st socket event for mqrepl's use
-        #    self._sock.setsockopt(socket.SOL_SOCKET, 20, self._sock_cb)
-        assert ssl_params is None, "TLS not yet supported" # :-(
-        #if ssl_params is not None:
-        #    log.debug("Wrapping SSL")
-        #    import ssl
-        #    self._sock = ssl.wrap_socket(self._sock, **ssl_params)
         # Construct connect packet
         premsg = bytearray(b"\x10\0\0\0\0")   # Connect message header
         msg = bytearray(b"\0\x04MQTT\x04\0\0\0")  # Protocol 3.1.1
@@ -212,6 +205,7 @@ class MQTTProto:
         # Write connect packet to socket
         if self._sock is None: await asyncio.sleep_ms(100) # esp32 glitch
         await self._as_write(premsg[:i], drain=False)
+        print(premsg[:i] + msg + struct.pack("!H", len(client_id)) + client_id)
         await self._as_write(msg, drain=False)
         await self._send_str(client_id, drain=False)
         if lw is not None:
@@ -220,12 +214,20 @@ class MQTTProto:
         if user is not None:
             await self._send_str(user, drain=False)
             await self._send_str(pwd, drain=False)
-        await self._as_write(b'') # cause drain
+        try:
+            await self._as_write(b'') # cause drain
+        except OSError as e:
+            print("OSError in write:", e)
+            raise
         # Await CONNACK
         # read causes ECONNABORTED if broker is out
-        resp = await self._as_read(4)
+        try:
+            resp = await self._as_read(4)
+        except OSError as e:
+            print("OSError in read:", e)
+            raise
         if resp[3] != 0 or resp[0] != 0x20 or resp[1] != 0x02:
-            raise OSError(-1)  # Bad CONNACK e.g. authentication fail.
+            raise OSError(-1, "MQTT CONNECT refused")  # Bad CONNACK e.g. authentication fail.
         self.last_ack = ticks_ms()
         log.debug('Connected')  # Got CONNACK
 
@@ -535,7 +537,7 @@ class MQTTClient():
                 self._got_pingresp)
         # FIXME: need to use a timeout here!
         await proto.connect(self._addr, self._c.client_id, clean,
-                user=self._c.user, pwd=self._c.password, ssl_params=self._c.ssl_params,
+                user=self._c.user, pwd=self._c.password, ssl=self._c.ssl_params,
                 keepalive=self._c.keepalive,
                 lw=self._c.will) # raises on error
         self._proto = proto

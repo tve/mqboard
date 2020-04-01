@@ -2,30 +2,83 @@
 #
 # Requires mqtt_async for asyncio-based MQTT.
 
-import io, os, sys, time
+import io, os, sys, time, gc
 import board, time, struct
 from mqtt_async import MQTTClient, config
+from esp32 import Partition
 import logging
-logging.basicConfig(level=logging.DEBUG)
 import uasyncio as asyncio
+import uhashlib as hashlib
+import ubinascii as binascii
 #asyncio.set_debug(True)
 #asyncio.core.set_debug(True)
 import logging
 log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 TOPIC = 'esp32/mqb/' + board.location + "/"
 TOPIC_CMD = TOPIC + "cmd/"
 BUFLEN=2800 # data bytes to make message fit into two std TCP segments
 
-ERR_SINGLEMSG = "only single message supported"
+# OTA manages a MicroPython firmware update over-the-air.
+# It assumes that there are two "app" partitions in the partition table and updates the one
+# that is not currently running. When the update is complete, it sets the new partition as
+# the next one to boot. It does not reset/restart, use machine.reset().
+class OTA:
+    def __init__(self):
+        self.part = Partition.get_next_update(Partition(Partition.RUNNING))
+        self.sha = hashlib.sha256()
+        self.seq = 0
+        self.block = 0
+        self.buf = b''
+
+    # handle processes one message with a chunk of data in msg. The sequence number seq needs
+    # to increment sequentially and the last call needs to have last==True as well as the
+    # sha set to the hashlib.sha256(entire_data).hexdigest().
+    async def handle(self, sha, msg, seq, last):
+        print("handle seq={}".format(seq))
+        if self.seq is None:
+            return "missing first message"
+        elif self.seq < seq:
+            return "duplicate message"
+        elif self.seq > seq:
+            return "message missing"
+        else:
+            self.seq += 1
+        self.sha.update(msg)
+        self.buf += msg
+        if len(self.buf) >= 4096 or last:
+            if len(self.buf) > 0: # last may be len(0)
+                if len(self.buf) < 4096:
+                    self.buf += bytes(4096-len(self.buf))
+                self.part.writeblocks(self.block, self.buf[:4096])
+                self.buf = self.buf[4096:]
+                self.block += 1
+                gc.collect()
+        if last:
+            return await self.finish(sha)
+        elif (seq&7) == 0:
+            print("Sending ACK {}".format(seq))
+            return "SEQ {}".format(seq).encode()
+
+    async def finish(self, check_sha):
+        calc_sha = binascii.hexlify(self.sha.digest())
+        check_sha = check_sha.encode()
+        if calc_sha != check_sha:
+            return "SHA mismatch calc:{} check={}".format(calc_sha, check_sha)
+        print("set_boot")
+        self.part.set_boot()
+        return b'OK'
+
 
 class MQRepl:
     def __init__(self):
         self._mqclient = None
+        self._ota = None
         self._put_fd = None
         self._put_seq = None
         self.CMDS = { 'eval': self._do_eval, 'exec': self._do_exec, 'get': self._do_get,
-                'put': self._do_put }
+                'put': self._do_put, 'ota': self._do_ota }
 
     async def start(self, config):
         board.blue_led(True) # signal that we're connecting, will get turned off by pulse()
@@ -118,6 +171,14 @@ class MQRepl:
             return b"OK"
         return None
 
+    # do_ota uploads a new firmware over-the-air and activates it for the next boot
+    # the fname passed in must be the sha256 of the firmware
+    async def _do_ota(self, fname, msg, seq, last):
+        if seq == 0:
+            self.ota = OTA()
+        if self.ota is not None:
+            return await self.ota.handle(fname, msg, seq, last)
+
     # Helpers
 
     async def _send_stream(self, topic, stream):
@@ -151,7 +212,7 @@ class MQRepl:
     # bit set for the last message in the sequence.
     async def _sub_cb(self, topic, msg, retained, qos):
         topic = str(topic, 'utf-8')
-        log.debug("MQTT: %s", topic)
+        #log.debug("MQTT: %s", topic)
         loop = asyncio.get_event_loop()
         loop.create_task(self._pulse())
         if topic.startswith(TOPIC_CMD) and len(msg) >= 2:
@@ -207,9 +268,11 @@ class MQRepl:
         await client.subscribe(TOPIC+"cmd/#", qos=1)
         log.info("Subscribed to %s%s", TOPIC, "cmd/#")
 
-if __name__ == '__main__':
+def doit():
     print("\n===== esp32 mqttrepl at `{}` starting at {} =====\n".format(board.location, time.time()))
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     ll=logging;ll._level_dict={ll.CRITICAL:'C',ll.ERROR:'E',ll.WARNING:'W',ll.INFO:'I',ll.DEBUG:'D'}
     mqr = MQRepl()
     asyncio.run(mqr.run(config))
+
+if __name__ == '__main__': doit()
