@@ -2,11 +2,9 @@
 #
 # Requires mqtt_async for asyncio-based MQTT.
 
-import io, os, sys, time, gc
-import board, time, struct
+import io, os, sys, time, board, struct, gc
 from mqtt_async import MQTTClient, config
 from esp32 import Partition
-import logging
 import uasyncio as asyncio
 import uhashlib as hashlib
 import ubinascii as binascii
@@ -19,6 +17,8 @@ log.setLevel(logging.DEBUG)
 TOPIC = 'esp32/mqb/' + board.location + "/"
 TOPIC_CMD = TOPIC + "cmd/"
 BUFLEN=2800 # data bytes to make message fit into two std TCP segments
+BLOCKLEN = const(4096) # data bytes in a flash block
+ERR_SINGLEMSG = "only single message supported"
 
 # OTA manages a MicroPython firmware update over-the-air.
 # It assumes that there are two "app" partitions in the partition table and updates the one
@@ -26,46 +26,61 @@ BUFLEN=2800 # data bytes to make message fit into two std TCP segments
 # the next one to boot. It does not reset/restart, use machine.reset().
 class OTA:
     def __init__(self):
-        self.part = Partition.get_next_update(Partition(Partition.RUNNING))
+        self.part = Partition(Partition.RUNNING).get_next_update()
         self.sha = hashlib.sha256()
         self.seq = 0
         self.block = 0
-        self.buf = b''
+        self.buf = bytearray(BLOCKLEN)
+        self.buflen = 0
 
     # handle processes one message with a chunk of data in msg. The sequence number seq needs
     # to increment sequentially and the last call needs to have last==True as well as the
     # sha set to the hashlib.sha256(entire_data).hexdigest().
     async def handle(self, sha, msg, seq, last):
-        print("handle seq={}".format(seq))
         if self.seq is None:
-            return "missing first message"
+            raise ValueError("missing first message")
         elif self.seq < seq:
-            return "duplicate message"
+            # "duplicate message"
+            return None
         elif self.seq > seq:
-            return "message missing"
+            raise ValueError("message missing")
         else:
             self.seq += 1
         self.sha.update(msg)
-        self.buf += msg
-        if len(self.buf) >= 4096 or last:
-            if len(self.buf) > 0: # last may be len(0)
-                if len(self.buf) < 4096:
-                    self.buf += bytes(4096-len(self.buf))
-                self.part.writeblocks(self.block, self.buf[:4096])
-                self.buf = self.buf[4096:]
+        # avoid allocating memory: use buf as-is
+        msglen = len(msg)
+        if self.buflen + msglen >= BLOCKLEN:
+            # got a full block, assemble it and write to flash
+            cpylen = BLOCKLEN - self.buflen
+            self.buf[self.buflen:BLOCKLEN] = msg[:cpylen]
+            self.part.writeblocks(self.block, self.buf)
+            self.block += 1
+            msglen -= cpylen
+            if msglen > 0:
+                self.buf[:msglen] = msg[cpylen:]
+            self.buflen = msglen
+        else:
+            self.buf[self.buflen:self.buflen+msglen] = msg
+            self.buflen += msglen
+            if last and self.buflen > 0:
+                for i in range(BLOCKLEN-self.buflen):
+                    self.buf[self.buflen+i] = 0xff # erased flash is ff
+                self.part.writeblocks(self.block, self.buf)
                 self.block += 1
-                gc.collect()
+        assert len(self.buf) == BLOCKLEN
         if last:
             return await self.finish(sha)
         elif (seq&7) == 0:
-            print("Sending ACK {}".format(seq))
+            #print("Sending ACK {}".format(seq))
             return "SEQ {}".format(seq).encode()
 
     async def finish(self, check_sha):
+        del self.buf
+        self.seq = None
         calc_sha = binascii.hexlify(self.sha.digest())
         check_sha = check_sha.encode()
         if calc_sha != check_sha:
-            return "SHA mismatch calc:{} check={}".format(calc_sha, check_sha)
+            raise ValueError("SHA mismatch calc:{} check={}".format(calc_sha, check_sha))
         print("set_boot")
         self.part.set_boot()
         return b'OK'
@@ -156,11 +171,12 @@ class MQRepl:
             self._put_fd = open(fname, 'wb')
             self._put_seq = 1 # next seq expected
         elif self._put_seq is None:
-            return "missing first message"
+            raise ValueError("missing first message")
         elif self._put_seq < seq:
-            return "duplicate message"
+            # "duplicate message"
+            return None
         elif self._put_seq > seq:
-            return "message missing"
+            raise ValueError("message missing")
         else:
             self._put_seq += 1
         self._put_fd.write(msg[2:])
@@ -175,9 +191,13 @@ class MQRepl:
     # the fname passed in must be the sha256 of the firmware
     async def _do_ota(self, fname, msg, seq, last):
         if seq == 0:
-            self.ota = OTA()
-        if self.ota is not None:
-            return await self.ota.handle(fname, msg, seq, last)
+            self._ota = OTA()
+        if self._ota is not None:
+            ret = await self._ota.handle(fname, msg, seq, last)
+            if last:
+                self._ota = None
+                gc.collect()
+            return ret
 
     # Helpers
 

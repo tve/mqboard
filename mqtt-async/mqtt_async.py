@@ -25,7 +25,6 @@ try:
     from time import ticks_ms, ticks_diff
     import uasyncio as asyncio
     async def open_connection(addr, ssl):
-        print(addr)
         return ( await asyncio.open_connection(addr[0], addr[1], ssl=ssl) )[0]
     gc.collect()
     try:
@@ -205,7 +204,6 @@ class MQTTProto:
         # Write connect packet to socket
         if self._sock is None: await asyncio.sleep_ms(100) # esp32 glitch
         await self._as_write(premsg[:i], drain=False)
-        print(premsg[:i] + msg + struct.pack("!H", len(client_id)) + client_id)
         await self._as_write(msg, drain=False)
         await self._send_str(client_id, drain=False)
         if lw is not None:
