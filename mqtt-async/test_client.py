@@ -223,8 +223,12 @@ async def finish_test(mqc, conns=2): # default to conns=2 because clean is True 
     # wait a bit and ensure all tasks have finished
     await asyncio.sleep_ms(4*RTT)
     assert mqc._conn_keeper is None
-    print(asyncio.all_tasks())
-    assert len(asyncio.all_tasks()) == 1
+    if hasattr(asyncio, 'all_tasks'): # introduced in 3.7
+        print(asyncio.all_tasks())
+        assert len(asyncio.all_tasks()) == 1
+    else:
+        print(asyncio.Task.all_tasks())
+        assert len(asyncio.Task.all_tasks()) == 1
 
 #----- test cases using the real MQTTproto and connecting to a real broker
 

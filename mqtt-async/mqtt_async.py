@@ -763,7 +763,7 @@ class MQTTClient():
             if self._prev_pub is not None and pid in self._unacked_pids and \
                     self._prev_pub_proto != proto:
                 m = self._prev_pub
-                log.warning("repub->%s qos=%d pid=%d", m.topic, m.qos, m.pid)
+                log.warning("repub->%s qos=%d pid=%s", m.topic, m.qos, m.pid)
                 self._prev_pub_proto = proto
                 try:
                     await proto.publish(m, dup=1)
@@ -771,7 +771,7 @@ class MQTTClient():
                     await self._reconnect(proto, 'pub')
                     continue
             # now publish the new packet on the same connection
-            log.debug("pub->%s qos=%d pid=%d", message.topic, message.qos, message.pid)
+            log.debug("pub->%s qos=%d pid=%s", message.topic, message.qos, message.pid)
             try:
                 await proto.publish(message, dup)
             except OSError as e:
