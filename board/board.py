@@ -51,6 +51,11 @@ def get_battery_voltage():
 
 from mqtt_async import config
 config.server = mqtt_server
+config.port = mqtt_port
+config.client_id = mqtt_ident
+config.ssl_params = {'server_hostname': mqtt_hostname}
+config.user = mqtt_user
+config.password = mqtt_passwd
 config.ssid = wifi_ssid
 config.wifi_pw = wifi_pass
 

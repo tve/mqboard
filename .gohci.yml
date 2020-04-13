@@ -1,0 +1,8 @@
+version: 1
+workers:
+- name: gohci-u3
+  checks:
+  - cmd:
+    - /home/gohci/repo-info.sh
+  - cmd:
+    - ./mqtt-async/gohci-pytest.sh

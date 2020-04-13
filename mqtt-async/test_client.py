@@ -52,7 +52,7 @@ class FakeProto:
         self.fail = None  # current failure mode
         print("Using FakeProto")
 
-    async def connect(self, addr, client_id, clean, user=None, pwd=None, ssl_params=None,
+    async def connect(self, addr, client_id, clean, user=None, pwd=None, ssl=None,
             keepalive=0, lw=None):
         global conn_calls, conn_fail
         conn_calls += 1

@@ -76,6 +76,7 @@ _CONN_DELAY = const(1)
 CONN_CLOSED = "Connection closed"
 CONN_TIMEOUT = "Connection timed out"
 PROTO_ERROR = "Protocol error"
+CONN_ERRS = ["inv proto vers", "client_id rejected", "srv down", "user/pass malformed", "not auth"]
 
 # MQTTConfig is a "dumb" struct-like class that holds config info for MQTTClient and MQTTProto.
 class MQTTConfig:
@@ -171,6 +172,7 @@ class MQTTProto:
         if lw is None:
             keepalive = 0
         log.info('Connecting to %s id=%s clean=%d', addr, client_id, clean)
+        log.debug('user=%s passwd-len=%d ssl=%s', user, pwd and len(pwd), ssl)
         try:
             # in principle, open_connection returns a (reader,writer) stream tuple, but in MP it
             # really returns a bidirectional stream twice, so we cheat and use only one of the tuple
@@ -178,7 +180,7 @@ class MQTTProto:
             self._sock = await open_connection(addr, ssl)
         except OSError as e:
             if e.args[0] != EINPROGRESS:
-                print("OSError in open_connection:", e)
+                log.info("OSError in open_connection: %s", e)
                 raise
         await asyncio.sleep_ms(10) # sure sure this is needed...
         # Construct connect packet
@@ -202,30 +204,40 @@ class MQTTProto:
             msg[7] |= lw.retain << 5
         i = self._write_varint(premsg, 1, sz)
         # Write connect packet to socket
-        if self._sock is None: await asyncio.sleep_ms(100) # esp32 glitch
-        await self._as_write(premsg[:i], drain=False)
-        await self._as_write(msg, drain=False)
-        await self._send_str(client_id, drain=False)
-        if lw is not None:
-            await self._send_str(lw.topic) # let it drain in case message is long
-            await self._send_str(lw.message)
-        if user is not None:
-            await self._send_str(user, drain=False)
-            await self._send_str(pwd, drain=False)
         try:
-            await self._as_write(b'') # cause drain
-        except OSError as e:
-            print("OSError in write:", e)
+            if self._sock is None: await asyncio.sleep_ms(100) # esp32 glitch
+            await self._as_write(premsg[:i], drain=False)
+            await self._as_write(msg, drain=False)
+            await self._send_str(client_id, drain=False)
+            if lw is not None:
+                await self._send_str(lw.topic) # let it drain in case message is long
+                await self._send_str(lw.message)
+            if user is not None:
+                await self._send_str(user, drain=False)
+                await self._send_str(pwd, drain=False)
+            try:
+                await self._as_write(b'') # cause drain
+            except OSError as e:
+                log.info("OSError in write: %s", e)
+                raise
+            # Await CONNACK
+            # read causes ECONNABORTED if broker is out
+            try:
+                resp = await self._as_read(4)
+            except OSError as e:
+                log.info("OSError in read: %s", e)
+                raise
+            if resp[0] != 0x20 or resp[1] != 0x02:
+                raise OSError(-1, "Bad CONNACK")
+            if resp[3] != 0:
+                if resp[3] < 6:
+                    raise OSError(-1, "CONNECT refused: " + CONN_ERRS[resp[3]-1])
+                else:
+                    raise OSError(-1, "CONNECT refused")
+        except Exception:
+            self._sock.close()
+            await self._sock.wait_closed()
             raise
-        # Await CONNACK
-        # read causes ECONNABORTED if broker is out
-        try:
-            resp = await self._as_read(4)
-        except OSError as e:
-            print("OSError in read:", e)
-            raise
-        if resp[3] != 0 or resp[0] != 0x20 or resp[1] != 0x02:
-            raise OSError(-1, "MQTT CONNECT refused")  # Bad CONNACK e.g. authentication fail.
         self.last_ack = ticks_ms()
         log.debug('Connected')  # Got CONNACK
 
@@ -682,7 +694,7 @@ class MQTTClient():
                     log.debug('reconnect OK!')
                     continue
                 except OSError as e:
-                    log.warning('error in MQTT reconnect.', e)
+                    log.warning('error in MQTT reconnect: %s', e)
                     # Can get ECONNABORTED or -1. The latter signifies no or bad CONNACK received.
                 # connecting to broker didn't work, disconnect Wifi
                 if self._proto is not None: # defensive coding -- not sure this can be triggered

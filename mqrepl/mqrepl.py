@@ -103,11 +103,6 @@ class MQRepl:
         config.debug = 1
         # get a clean connection
         config.clean = True
-        self._mqclient = MQTTClient(config)
-        await self._mqclient.connect()
-        await self._mqclient.disconnect()
-        # now do real connection
-        config.clean = False
         config.connect_coro = self._conn_cb
         self._mqclient = MQTTClient(config)
         await self._mqclient.connect()
