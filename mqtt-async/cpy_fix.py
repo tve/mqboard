@@ -1,6 +1,6 @@
 # work-arounds on cpython to enable pytest testing of mqtt_as.py
 
-from time import monotonic_ns
+from time import monotonic
 def ticks_ms(): return monotonic() * 1000
 def ticks_diff(a, b): return a-b
 

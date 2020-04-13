@@ -16,7 +16,7 @@ RTT    = 40 # simulated broker response time in ms
 mqtt_async._CONN_DELAY = RTT*2/1000 # set connection delay used by MQTTClient
 
 # stuff that exists in MP but not CPython
-from time import monotonic_ns
+from time import monotonic
 def ticks_ms(): return monotonic() * 1000
 def ticks_diff(a, b): return a-b
 import asyncio
