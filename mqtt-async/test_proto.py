@@ -26,8 +26,8 @@ except:
 try:
     from time import ticks_ms, ticks_diff
 except:
-    from time import monotonic_ns
-    def ticks_ms(): return monotonic_ns() // 1000000
+    from time import monotonic
+    def ticks_ms(): return monotonic() * 1000
     def ticks_diff(a, b): return a-b
 
 try:
