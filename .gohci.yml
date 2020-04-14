@@ -5,6 +5,8 @@ workers:
   - cmd:
     - /home/gohci/repo-info.sh
   - cmd:
-    - ./mqtt-async/gohci-pytest.sh
+    - ./board/gohci.sh
+  - cmd:
+    - ./mqtt-async/gohci.sh
   - cmd:
     - /home/gohci/repo-save.sh

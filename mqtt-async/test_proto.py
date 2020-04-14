@@ -279,7 +279,7 @@ async def test_auth_succ():
     #
     await mqc.disconnect()
 
-async def test_ssl_raw_blocking1():
+async def test_ssl_raw_blocking():
     #addr = ('192.168.0.14', 8883)
     #addr = socket.getaddrinfo('iot.eclipse.org', 8883)[0][-1]
     addr = socket.getaddrinfo('test.mosquitto.org', 8883)[0][-1]
@@ -372,8 +372,8 @@ if sys.implementation.name == 'micropython':
     print("Running tests explicitly:", test_funs)
     good = 0
     bad  = 0
-    for test_fun in ['test_ssl_raw_blocking', 'test_ssl_raw_nonblocking', 'test_ssl_default']:
-    #for test_fun in test_funs:
+    #for test_fun in ['test_ssl_raw_blocking', 'test_ssl_raw_nonblocking', 'test_ssl_default']:
+    for test_fun in test_funs:
         print("\n========= {} ==========".format(test_fun))
         try:
             loop.run_until_complete(eval(test_fun+'()'))
