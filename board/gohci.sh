@@ -18,6 +18,7 @@ fi
 
 echo "----- resetting and connecting to wifi -----"
 python3 -c "import serial; s=serial.serial_for_url('$PORT'); s.setDTR(0); s.setDTR(1)"
+echo did reset
 sleep 3
 out=$(timeout 1m pyboard.py --device $PORT -c 'connect_wifi()')
 if [[ "$out" != *Connected* ]]; then
