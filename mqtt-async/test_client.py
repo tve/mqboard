@@ -486,7 +486,8 @@ async def test_async_pub_ordering():
         if FAKE and i%3 == 2:
             mqc._proto.fail = FAIL_CLOSED
             print("FAIL_CLOSED")
-        assert len(mqc._unacked_pids) <= 1
+        # veryfy number of outstanding messages, hack: ping shows up as pid=100000
+        assert len([k for k,_ in range mqc._unacked_pids if k < 100000) <= 1
     #
     await asyncio.sleep_ms(5*RTT)
     await asyncio.sleep_ms(500)

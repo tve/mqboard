@@ -11,7 +11,7 @@ echo "----- uploading board files -----"
 pyboard.py --device $PORT -f cp board.py boot.py logging.py main.py :
 pyboard.py --device $PORT -f cp $HOME/board_config_esp32.py :board_config.py
 out=$(pyboard.py --device $PORT -f ls)
-if ! [ "$out" == "board.py" ]; then
+if [ "$out" != *board.py*board_config.py*boot.py*logging.py*main.py* ]; then
 	echo OOPS, got: "$out"
 	exit 1
 fi

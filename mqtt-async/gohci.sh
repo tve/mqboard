@@ -7,7 +7,7 @@ pwd
 echo "----- pytest test_client.py in CPython -----"
 pytest
 
-echo "---- testing pyboard serial ----"
+echo "---- checking pyboard serial ----"
 pyboard.py --device $PORT -c "print('hello world')" || true
 
 echo "----- pyboard test_proto on esp32 -----"
