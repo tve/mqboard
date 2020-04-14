@@ -20,11 +20,14 @@ echo "----- resetting and connecting to wifi -----"
 python3 -c "import serial; s=serial.serial_for_url('$PORT'); s.setDTR(0); s.setDTR(1)"
 sleep 3
 out=$(timeout 1m pyboard.py --device $PORT -c 'connect_wifi()')
-echo "$out" | egrep 'Connected'
+if [[ "$out" != *Connected* ]]; then
+	echo OOPS, got: "$out"
+	exit 1
+fi
 
 echo "----- check that board variables are set -----"
 out=$(pyboard.py --device $PORT -c "from board import *; print(kind, led, bat_volt_pin, bat_fct)")
-if [[ "$out" == "a b c" ]]; then
+if [[ "$out" != "a b c" ]]; then
 	echo OOPS, got: "$out"
 	exit 1
 fi
