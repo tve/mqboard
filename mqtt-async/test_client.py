@@ -489,6 +489,7 @@ async def test_async_pub_ordering():
         assert len(mqc._unacked_pids) <= 1
     #
     await asyncio.sleep_ms(5*RTT)
+    await asyncio.sleep_ms(500)
     assert len(msg_q) >= num
     for i in range(len(msg_q)):
         print("{}: {}".format(i, msg_q[i].message))
