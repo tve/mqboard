@@ -7,3 +7,4 @@ from esp32 import Partition as p
 print("Booting partition", p(p.RUNNING).info()[4])
 
 import board
+from board import connect_wifi

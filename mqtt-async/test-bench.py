@@ -10,11 +10,10 @@ try:
 except:
     pass
 
-from mqtt_async import MQTTClient, MQTTConfig, MQTTMessage
+from mqtt_async import MQTTClient, MQTTMessage, config
 
-broker = ('192.168.0.14', 1883)
-cli_id = 'mqtt_async_tester'
-prefix = 'esp32/tests/'
+cli_id = 'esp32/test-bench'
+prefix = 'test/esp32-bench'
 
 # stuff that exists in MP but not CPython
 try:
@@ -57,22 +56,18 @@ def reset_cb():
 cli_num = random.randrange(100000000) # add number to client id so each test
 def fresh_config():
     global cli_num, conn_calls, conn_fail
-    conf = MQTTConfig()
-    conf.server = broker[0]
-    conf.port = broker[1]
-    conf.ssid = 'tve-home'
-    conf.wifi_pw = 'tve@home'
-    conf.client_id = "{}-{}".format(cli_id, cli_num)
+    conf = config.copy()
+    conf["client_id"] = "{}-{}".format(cli_id, cli_num)
     cli_num += 1
-    conf.wifi_coro = wifi_coro
-    conf.subs_cb = subs_cb
-    conf.connect_coro = conn_start
+    conf["wifi_coro"] = wifi_coro
+    conf["subs_cb"] = subs_cb
+    conf["connect_coro"] = conn_start
     return conf
 
 async def connect_subscribe(topic, qos, clean=True):
     conf = fresh_config()
-    conf.debug = 0
-    conf.clean = clean
+    conf["debug"] = 0
+    conf["clean"] = clean
     mqc = MQTTClient(conf)
     reset_cb()
     #

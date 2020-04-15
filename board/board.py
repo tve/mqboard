@@ -14,6 +14,9 @@ from board_config import *
 
 # ===== LED stuff and battery voltage stuff
 # Defines `led(on_off)` and `get_battery_voltage()`
+# act_led: network activity LED, typ. blue, turn on with act_led(True)
+# fail_led: failure/error, type red, turn on with fail_led(True)
+# For demos ensure the same calling convention for LEDs on all platforms.
 
 led = False
 bat_volt_pin = None
@@ -23,16 +26,41 @@ if kind == "tve-bare":
     # bare esp32-wroom module with LED across IO23 and gnd
     lpin = machine.Pin(23, machine.Pin.OUT, None, value=1)
     led = lambda v: lpin(v)
+    act_led, fail_led = (led, led)
 elif kind == "huzzah32":
     # Adafruit Huzzah32 feather
     lpin = machine.Pin(13, machine.Pin.OUT, None, value=1)
     led = lambda v: lpin(v)
+    fail_led = led
 elif kind == "lolin-d32":
     # Wemos Lolin D-32
     lpin = machine.Pin(5, machine.Pin.OUT, None, value=1)
     led = lambda v: lpin(not v)
     bat_volt_pin = machine.ADC(machine.Pin(35))
     bat_volt_pin.atten(machine.ADC.ATTN_11DB)
+    act_led, fail_led = (led, led)
+elif kind == "ezsbc":
+    # EzSBC
+    lpin = machine.Pin(19, machine.Pin.OUT, None, value=1)
+    blue_led = lambda v: lpin(not v)
+    lpin = machine.Pin(16, machine.Pin.OUT, None, value=1)
+    red_led = lambda v: lpin(not v)
+    #bat_volt_pin = machine.ADC(machine.Pin(35))
+    #bat_volt_pin.atten(machine.ADC.ATTN_11DB)
+    act_led, fail_led = (blue_led, red_led)
+elif kind == 'tinypico':
+    # TinyPICO has an RGB LED so we use the red channel for WiFi and the blue
+    # channel for message rx
+    from led import dotstar
+    color = [255, 0, 0]
+    def set_red(v):
+        color[0] = 255 if v else 0
+        dotstar[0] = color
+    def set_blue(v):
+        color[2] = 255 if v else 0
+        dotstar[0] = color
+    fail_led = set_red
+    act_led = set_blue
 
 def get_battery_voltage():
     """
@@ -54,31 +82,18 @@ try:
 except Exception:
     pass
 
-# ===== LED stuff
-# For demos ensure the same calling convention for LEDs on all platforms.
-# ESP8266 Feather Huzzah reference board has active low LEDs on pins 0 and 2.
-# ESP32 is assumed to have user supplied active low LEDs on same pins.
-# Call with blue_led(True) to light
+# ===== Wifi stuff
+# connect_wifi is a handy little function to manually connect wifi
+def connect_wifi():
+    import network
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    print('Connecting to', wifi_ssid, '...')
+    wlan.connect(wifi_ssid, wifi_pass)
+    while not wlan.isconnected():
+        pass
+    print('Connected!')
 
-# TinyPICO has an RGB LED so we use the red channel for WiFi and the blue
-# channel for message rx
-if kind == 'tinypico':
-    from led import dotstar
-    color = [255, 0, 0]
-    def set_red(v):
-        color[0] = 255 if v else 0
-        dotstar[0] = color
-    def set_blue(v):
-        color[2] = 255 if v else 0
-        dotstar[0] = color
-    wifi_led = set_red  # Red LED for WiFi fail/not ready yet
-    blue_led = set_blue # Message received
-
-# Default is to have only one LED and use that both for WiFi problems
-# and for message RX
-else:
-    wifi_led = led
-    blue_led = led
 
 #if platform == 'pyboard':
 #    from pyb import LED
