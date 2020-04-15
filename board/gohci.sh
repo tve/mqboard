@@ -1,4 +1,4 @@
-#! /bin/bash -ex
+#! /bin/bash -e
 PORT=/dev/ttyUSB0
 export PATH=$HOME/bin:$PATH
 cd $(dirname $0)

@@ -86,6 +86,7 @@ class FakeProto:
             raise OSError(1, "simulated closed")
         if self.fail != FAIL_DROP:
             asyncio.get_event_loop().create_task(self._handle_ping_resp(ticks_ms()+self.rtt))
+            await asyncio.sleep_ms(0)
 
     async def disconnect(self):
         await asyncio.sleep_ms(2) # let something else run to simulate write
@@ -95,19 +96,23 @@ class FakeProto:
     async def _handle_puback(self, when, pid):
         await self._sleep_until(when)
         def f():
-            self.last_ack = ticks_ms()
-            print("puback", pid)
-            self._puback_cb(pid)
+            if self._connected:
+                self.last_ack = ticks_ms()
+                print("puback pid:", pid)
+                self._puback_cb(pid)
         self._q.append(f)
 
     # _handle_pub simulates receiving a pub message
     async def _handle_pub(self, when, msg):
         await self._sleep_until(when)
-        def f(): self._pub_cb(msg)
+        def f():
+            if self._connected:
+                print("pub len:", len(self._q), "pid:", msg.pid)
+                self._pub_cb(msg)
         self._q.append(f)
-        print("pub", len(self._q))
 
     async def publish(self, msg, dup=0):
+        print("New pub pid:", msg.pid)
         if self.fail == FAIL_CLOSED:
             raise OSError(1, "simulated closed")
         # space pubs out a tad else the replies can come out of order (oops!)
@@ -125,7 +130,7 @@ class FakeProto:
                 dt = 2*(msg.pid&1)
             print("Sched pid={} at {}".format(msg.pid, now+self.rtt+1-dt-t0))
             loop.create_task(self._handle_pub(now+self.rtt+1-dt, msg))
-            await asyncio.sleep_ms(1) # ensure the above _handle_pubs start their wait now
+            await asyncio.sleep_ms(0) # ensure the above _handle_pubs start their wait now
 
     # _handle_suback simulates receiving a suback
     async def _handle_suback(self, when, pid, qos):
