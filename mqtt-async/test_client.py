@@ -7,7 +7,7 @@ import pytest, random, sys
 pytestmark = pytest.mark.timeout(10)
 
 import mqtt_async
-from mqtt_async import MQTTClient, MQTTConfig, MQTTMessage
+from mqtt_async import MQTTClient, MQTTMessage, config
 
 broker = ('192.168.0.14', 1883)
 cli_id = 'mqtt_as_tester'
@@ -185,23 +185,23 @@ def fresh_config():
     global cli_num, conn_calls, conn_fail
     conn_calls = 0
     conn_fail = 0
-    conf = MQTTConfig()
-    conf.server = broker[0]
-    conf.port = broker[1]
-    conf.client_id = "{}-{}".format(cli_id, cli_num)
-    conf.ssid = 'testme'
+    conf = config.copy()
+    conf["server"] = broker[0]
+    conf["port"] = broker[1]
+    conf["client_id"] = "{}-{}".format(cli_id, cli_num)
+    conf["ssid"] = 'testme'
     cli_num += 1
-    conf.wifi_coro = wifi_coro
-    conf.subs_cb = subs_cb
-    conf.connect_coro = conn_start
-    conf.response_time = (3*RTT)/1000     # response time limit in fractional seconds
-    conf.interface.disconnect()           # ensure all tests start disconnected
+    conf["wifi_coro"] = wifi_coro
+    conf["subs_cb"] = subs_cb
+    conf["connect_coro"] = conn_start
+    conf["response_time"] = (3*RTT)/1000     # response time limit in fractional seconds
+    conf["interface"].disconnect()           # ensure all tests start disconnected
     return conf
 
 async def connect_subscribe(topic, qos, clean=True, fake=True):
     conf = fresh_config()
-    conf.debug = 3
-    conf.clean = clean
+    conf["debug"] = 3
+    conf["clean"] = clean
     mqc = MQTTClient(conf)
     if fake:
         mqc._MQTTProto = FakeProto
@@ -245,85 +245,66 @@ def test_dns_lookup():
     mqc._dns_lookup()
     assert mqc._addr == broker
 
-def test_mqtt_config():
-    conf = MQTTConfig()
-    #
-    conf.foo = 'bar'
-    assert conf.foo == 'bar'
-    assert conf["foo"] == 'bar'
-    #
-    with pytest.raises(AttributeError):
-        assert conf["bar"] == 'baz'
-    conf["bar"] = 'baz'
-    with pytest.raises(AttributeError):
-        assert conf["bar"] == 'baz'
-    conf.bar = 'baz'
-    assert conf.bar == 'baz'
-    assert conf["bar"] == 'baz'
-    conf["bar"] = 'baz2'
-    assert conf.bar == 'baz2'
-    assert conf["bar"] == 'baz2'
-
 def test_set_last_will():
-    conf = MQTTConfig()
+    conf = mqtt_async.config
     exception = 0
     #
     try:
-        conf.set_last_will("top", "mess", qos=2)
+        mqtt_async.set_last_will(conf, "top", "mess", qos=2)
     except ValueError:
         exception += 1
     assert exception == 1
     #
     try:
-        conf.set_last_will(None, "mess", qos=1)
+        mqtt_async.set_last_will(conf, None, "mess", qos=1)
     except ValueError:
         exception += 1
     assert exception == 2
     #
-    conf.set_last_will("top", "mess", qos=1)
-    assert conf.will.topic == b'top'
-    assert conf.will.message == b'mess'
-    assert conf.will.retain == False
-    assert conf.will.qos == 1
+    mqtt_async.set_last_will(conf, "top", "mess", qos=1)
+    assert conf["will"].topic == b'top'
+    assert conf["will"].message == b'mess'
+    assert conf["will"].retain == False
+    assert conf["will"].qos == 1
 
 def test_init_errors():
     conf = fresh_config()
-    conf.will = "bye"
+    conf["will"] = "bye"
     with pytest.raises(ValueError, match=r'.*MQTTMessage.*'):
         mqc = MQTTClient(conf)
     #
     conf = fresh_config()
-    conf.will = MQTTMessage("foo", "bar")
-    conf.keepalive = 1000000
+    conf["will"] = MQTTMessage("foo", "bar")
+    conf["keepalive"] = 1000000
     with pytest.raises(ValueError, match='invalid keepalive'):
         mqc = MQTTClient(conf)
     #
     conf = fresh_config()
-    conf.will = MQTTMessage("foo", "bar")
-    conf.response_time = 10
-    conf.keepalive = 10
+    conf["will"] = MQTTMessage("foo", "bar")
+    conf["response_time"] = 10
+    conf["keepalive"] = 10
     with pytest.raises(ValueError, match=r'keepalive.*time'):
         mqc = MQTTClient(conf)
     #
-    conf = MQTTConfig()
+    conf = config.copy()
     with pytest.raises(ValueError, match='no server'):
         mqc = MQTTClient(conf)
     #
     conf = fresh_config()
-    conf.port = 0
+    conf["port"] = 0
     mqc = MQTTClient(conf)
-    assert mqc._c.port == 1883
+    assert mqc._c["port"] == 1883
     #
     conf = fresh_config()
-    conf.port = 0
-    conf.ssl_params = 1
+    conf["port"] = 0
+    conf["ssl_params"] = 1
     mqc = MQTTClient(conf)
-    assert mqc._c.port == 8883
+    assert mqc._c["port"] == 8883
 
 @pytest.mark.asyncio
 async def test_connect_disconnect():
     conf = fresh_config()
-    conf.clean = False
+    conf["clean"] = False
     mqc = MQTTClient(conf)
     mqc._MQTTProto = FakeProto
     assert mqc._state == 0

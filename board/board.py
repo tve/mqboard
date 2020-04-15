@@ -46,19 +46,15 @@ def get_battery_voltage():
     return measuredvbat
 
 # ===== MQTT stuff
-# defines config stuff for mqtt_async
+# merge board-specific mqtt config into default config
 # in the app use `mqtt_async.MQTTClient(mqtt_async.config)`
+try:
+    from mqtt_async import config
+    config.update(mqtt_config)
+except Exception:
+    pass
 
-from mqtt_async import config
-config.server = mqtt_server
-config.port = mqtt_port
-config.client_id = mqtt_ident
-config.ssl_params = {'server_hostname': mqtt_hostname}
-config.user = mqtt_user
-config.password = mqtt_passwd
-config.ssid = wifi_ssid
-config.wifi_pw = wifi_pass
-
+# ===== LED stuff
 # For demos ensure the same calling convention for LEDs on all platforms.
 # ESP8266 Feather Huzzah reference board has active low LEDs on pins 0 and 2.
 # ESP32 is assumed to have user supplied active low LEDs on same pins.

@@ -9,7 +9,7 @@
 #    pass
 
 import sys, socket
-from mqtt_async import MQTTProto, MQTTMessage, MQTTConfig
+from mqtt_async import MQTTProto, MQTTMessage, set_last_will, config
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -226,12 +226,12 @@ async def test_last_will():
     global pub_q, puback_set, suback_map
     pub_q = []
     # construct last will object like MQTTClient would do
-    conf = MQTTConfig()
+    conf = config.copy()
     lw_topic = prefix + 'lw'
-    conf.set_last_will(lw_topic, "bye")
+    set_last_will(conf, lw_topic, "bye")
     # connection 1 with last will
     conn1 = MQTTProto(got_pub, got_puback, got_suback, got_pingresp)
-    await conn1.connect(broker, cli_id, True, keepalive=60, lw=conf.will)
+    await conn1.connect(broker, cli_id, True, keepalive=60, lw=conf["will"])
     # connection 2 with subscription
     conn2 = MQTTProto(got_pub, got_puback, got_suback, got_pingresp)
     await conn2.connect(broker, cli_id+"-2", True)
