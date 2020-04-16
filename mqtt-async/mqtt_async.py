@@ -162,7 +162,7 @@ class MQTTProto:
         if lw is None:
             keepalive = 0
         log.info('Connecting to %s id=%s clean=%d', addr, client_id, clean)
-        log.debug('user=%s passwd-len=%d ssl=%s', user, pwd and len(pwd), ssl)
+        log.debug('user=%s passwd-len=%s ssl=%s', user, pwd and len(pwd), ssl)
         try:
             # in principle, open_connection returns a (reader,writer) stream tuple, but in MP it
             # really returns a bidirectional stream twice, so we cheat and use only one of the tuple

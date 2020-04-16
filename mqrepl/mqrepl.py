@@ -96,16 +96,18 @@ class MQRepl:
                 'put': self._do_put, 'ota': self._do_ota }
 
     async def start(self, config):
-        board.blue_led(True) # signal that we're connecting, will get turned off by pulse()
+        board.fail_led(True)
         #config['ssl_params'] = {'psk_ident':board.mqtt_ident, 'psk_key':board.mqtt_key}
-        config.subs_cb = self._sub_cb
-        config.wifi_coro = self._wifi_cb
-        config.debug = 1
+        config["subs_cb"] = self._sub_cb
+        config["wifi_coro"] = self._wifi_cb
+        config["debug"] = 1
         # get a clean connection
-        config.clean = True
-        config.connect_coro = self._conn_cb
+        config["clean"] = True
+        config["connect_coro"] = self._conn_cb
         self._mqclient = MQTTClient(config)
         await self._mqclient.connect()
+        board.fail_led(False)
+
 
     async def stop(self):
         await self._mqclient.disconnect()
@@ -214,9 +216,9 @@ class MQRepl:
 
     # pulse blue LED
     async def _pulse(self):
-        board.blue_led(True)
+        board.act_led(True)
         await asyncio.sleep_ms(100)
-        board.blue_led(False)
+        board.act_led(False)
 
     # mqtt_async callback handlers
 
@@ -272,7 +274,7 @@ class MQRepl:
                 loop.create_task(self._mqclient.publish(errtopic, "Command '" + cmd + "' not supported", qos=1))
 
     async def _wifi_cb(self, state):
-        board.wifi_led(not state)  # Light LED when WiFi down
+        board.fail_led(not state)  # Light LED when WiFi down
         if state:
             log.info('WiFi connected')
         else:
