@@ -117,8 +117,8 @@ class FakeProto:
             raise OSError(1, "simulated closed")
         # space pubs out a tad else the replies can come out of order (oops!)
         now = ticks_ms()
-        if ticks_diff(now, self._last_pub) < 10:
-            await asyncio.sleep_ms(10)
+        if ticks_diff(now, self._last_pub) < 20:
+            await asyncio.sleep_ms(20)
             now = ticks_ms()
         self._last_pub = now
         # schedule publish effects unless we have a failure

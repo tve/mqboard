@@ -9,4 +9,6 @@ workers:
   - cmd:
     - ./mqtt-async/gohci.sh
   - cmd:
+    - ./mqrepl/gohci.sh
+  - cmd:
     - /home/gohci/repo-save.sh
