@@ -37,3 +37,4 @@ if [[ "$out" != *"True True True None 2"* ]]; then
 	echo OOPS, got: "$out"
 	exit 1
 fi
+echo 'Success!'
