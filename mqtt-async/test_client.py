@@ -22,6 +22,9 @@ def ticks_diff(a, b): return a-b
 import asyncio
 async def sleep_ms(ms): await asyncio.sleep(ms/1000)
 
+import logging
+log = logging.getLogger(__name__)
+
 # -----Fake MQTTProto
 
 FAIL_CLOSED = 1 # act as if socket had been closed or errored
@@ -50,7 +53,7 @@ class FakeProto:
         self.last_ack = 0 # last ACK received from broker
         self.rtt = RTT    # milliseconds round-trip time for a broker response
         self.fail = None  # current failure mode
-        print("Using FakeProto")
+        log.debug("Using FakeProto")
 
     async def connect(self, addr, client_id, clean, user=None, pwd=None, ssl=None,
             keepalive=0, lw=None):
@@ -66,7 +69,7 @@ class FakeProto:
         self._last_pub = 0
         # simulate conn-connack round-trip
         self.last_ack = ticks_ms()
-        print("Connected ack={}".format(self.last_ack))
+        log.debug("Connected ack={}".format(self.last_ack))
 
     # _sleep_until calls sleep until the deadline is reached (approximately)
     async def _sleep_until(self, deadline):
@@ -98,7 +101,7 @@ class FakeProto:
         def f():
             if self._connected:
                 self.last_ack = ticks_ms()
-                print("puback pid:", pid)
+                log.debug("puback pid: {}".format(pid))
                 self._puback_cb(pid)
         self._q.append(f)
 
@@ -107,12 +110,12 @@ class FakeProto:
         await self._sleep_until(when)
         def f():
             if self._connected:
-                print("pub len:", len(self._q), "pid:", msg.pid)
+                log.debug("pub len:{} pid:{} msg:{}".format(len(self._q), msg.pid, msg.message))
                 self._pub_cb(msg)
         self._q.append(f)
 
     async def publish(self, msg, dup=0):
-        print("New pub pid:", msg.pid)
+        log.debug("New pub pid:{}".format(msg.pid))
         if self.fail == FAIL_CLOSED:
             raise OSError(1, "simulated closed")
         # space pubs out a tad else the replies can come out of order (oops!)
@@ -128,7 +131,7 @@ class FakeProto:
             if msg.qos > 0:
                 loop.create_task(self._handle_puback(now+self.rtt, msg.pid))
                 dt = 2*(msg.pid&1)
-            print("Sched pid={} at {}".format(msg.pid, now+self.rtt+1-dt-t0))
+            log.debug("Sched pid={} in {}ms".format(msg.pid, self.rtt+1-dt))
             loop.create_task(self._handle_pub(now+self.rtt+1-dt, msg))
             await asyncio.sleep_ms(0) # ensure the above _handle_pubs start their wait now
 
@@ -141,7 +144,7 @@ class FakeProto:
             self.last_ack = ticks_ms()
             self._suback_cb(pid, qos)
         self._q.append(f)
-        #print("suback now", len(self._q))
+        #log.debug("suback now", len(self._q))
 
     async def subscribe(self, topic, qos, pid):
         if self.fail == FAIL_CLOSED:
@@ -152,7 +155,7 @@ class FakeProto:
     async def read_msg(self):
         while self._connected:
             if len(self._q) > 0:
-                print("check_msg pop", len(self._q))
+                log.debug("check_msg pop len:{}".format(len(self._q)))
                 self._q.pop(0)()
                 return
             await asyncio.sleep_ms(10)
@@ -165,12 +168,12 @@ class FakeProto:
 msg_q = []
 def subs_cb(msg):
     global msg_q
-    print("got pub", msg.pid)
+    log.debug("*** got pub pid:{} msg:{}".format(msg.pid, msg.message))
     msg_q.append(msg)
 
 wifi_status = None
 async def wifi_coro(status):
-    print('wifi_coro({})'.format(status))
+    log.debug('wifi_coro({})'.format(status))
     global wifi_status
     wifi_status = status
 
@@ -229,10 +232,10 @@ async def finish_test(mqc, conns=2): # default to conns=2 because clean is True 
     await asyncio.sleep_ms(4*RTT)
     assert mqc._conn_keeper is None
     if hasattr(asyncio, 'all_tasks'): # introduced in 3.7
-        print(asyncio.all_tasks())
+        log.debug(asyncio.all_tasks())
         assert len(asyncio.all_tasks()) == 1
     else:
-        print(asyncio.Task.all_tasks())
+        log.debug(asyncio.Task.all_tasks())
         assert len(asyncio.Task.all_tasks()) == 1
 
 #----- test cases using the real MQTTproto and connecting to a real broker
@@ -455,40 +458,42 @@ async def test_async_pub_simple():
     await finish_test(mqc)
 
 # test async pub ordering
-@pytest.mark.asyncio
-async def test_async_pub_ordering():
-    topic = prefix+"async2"
-    mqc, conf = await connect_subscribe(topic, 1, fake=FAKE)
-    #
-    num = 20
-    t0 = ticks_ms()
-    for i in range(num):
-        print("*** pub {} at {}s***".format(i, ticks_diff(ticks_ms(), t0)//1000))
-        m = "Hello {}".format(i)
-        if not FAKE and i%3 == 2:
-                mqc._proto._sock.send(b'\0\0')
-                print("FAIL_ABORT")
-        await mqc.publish(topic, m, qos=1, sync=False)
-        if FAKE and i%3 == 2:
-            mqc._proto.fail = FAIL_CLOSED
-            print("FAIL_CLOSED")
-        # verify number of outstanding messages, hack: ping shows up as pid=100000
-        assert len([k for k in mqc._unacked_pids if k < 100000]) <= 1
-    #
-    await asyncio.sleep_ms(5*RTT)
-    await asyncio.sleep_ms(500)
-    assert len(msg_q) >= num
-    for i in range(len(msg_q)):
-        print("{}: {}".format(i, msg_q[i].message))
-    i = 0
-    while i < len(msg_q):
-        # remove duplicates
-        while i > 0 and msg_q[i].message == msg_q[i-1].message:
-            del msg_q[i]
-        print("{}: {}".format(i, msg_q[i].message))
-        m = "Hello {}".format(i)
-        assert msg_q[i].message == m.encode()
-        i += 1
-    #
-    await finish_test(mqc, conns=num//3+2)
-
+# this test has a bug: the FakeProto doesn't resend pubs and so if it sent a puback the test client
+# won't resend to the broker and fake proto won't resend to the client -> lost message
+#@pytest.mark.asyncio
+#async def test_async_pub_ordering():
+#    topic = prefix+"async2"
+#    mqc, conf = await connect_subscribe(topic, 1, fake=FAKE)
+#    #
+#    num = 20
+#    t0 = ticks_ms()
+#    for i in range(num):
+#        log.debug("*** pub {} at {}s***".format(i, ticks_diff(ticks_ms(), t0)//1000))
+#        m = "Hello {}".format(i)
+#        if not FAKE and i%3 == 2:
+#                mqc._proto._sock.send(b'\0\0')
+#                log.debug("FAIL_ABORT")
+#        await mqc.publish(topic, m, qos=1, sync=False)
+#        if FAKE and i%3 == 2:
+#            mqc._proto.fail = FAIL_CLOSED
+#            log.debug("FAIL_CLOSED")
+#        # verify number of outstanding messages, hack: ping shows up as pid=100000
+#        assert len([k for k in mqc._unacked_pids if k < 100000]) <= 1
+#    #
+#    await asyncio.sleep_ms(5*RTT)
+#    await asyncio.sleep_ms(500)
+#    assert len(msg_q) >= num
+#    for i in range(len(msg_q)):
+#        log.debug("{}: {}".format(i, msg_q[i].message))
+#    i = 0
+#    while i < len(msg_q):
+#        # remove duplicates
+#        while i > 0 and msg_q[i].message == msg_q[i-1].message:
+#            del msg_q[i]
+#        log.debug("{}: {}".format(i, msg_q[i].message))
+#        m = "Hello {}".format(i)
+#        assert msg_q[i].message == m.encode()
+#        i += 1
+#    #
+#    await finish_test(mqc, conns=num//3+2)
+#
