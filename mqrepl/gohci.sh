@@ -1,6 +1,8 @@
 #! /bin/bash
 PORT=/dev/ttyUSB0
 export PATH=$HOME/bin:$PATH
+cd $(dirname $0)
+pwd
 
 cat <<'EOF' >/tmp/foo
 from mqtt_async import MQTTClient, config
