@@ -14,10 +14,10 @@ echo "----- run test_proto on esp32 -----"
 pyboard.py --device $PORT -f cp mqtt_async.py :
 pyboard.py --device $PORT -c 'connect_wifi()'
 sleep 1
-pyboard.py --device $PORT test_proto.py
+timeout 1m pyboard.py --device $PORT test_proto.py
 
-echo "----- run test_proto on esp32 -----"
-pyboard.py --device $PORT test-bench.py
+echo "----- run test_bench on esp32 -----"
+timeout 1m pyboard.py --device $PORT test-bench.py
 
 echo "----- clean-up -----"
 pyboard.py --device $PORT -f rm :mqtt_async.py
