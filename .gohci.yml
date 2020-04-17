@@ -9,7 +9,7 @@ workers:
   - cmd:
     - ./board/gohci.sh
   - cmd:
-    - ./mqtt-async/gohci.sh
+    - ./mqtt_async/gohci.sh
   - cmd:
     - ./mqrepl/gohci.sh
   - cmd:

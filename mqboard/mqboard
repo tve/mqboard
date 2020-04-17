@@ -1,0 +1,401 @@
+#! /usr/bin/python
+# MQBoard - Command Line Interface
+# Copyright (c) 2020 by Thorsten von Eicken
+# Adapted from Adafruit's ampy, see copyright at the bottom.
+
+from __future__ import print_function
+import os, sys, platform, posixpath, re, random, base64, logging, struct, time, hashlib
+
+def ticks(): return time.monotonic()
+
+import click
+import dotenv
+import paho.mqtt.client as paho
+
+# Load MQBOARD_PORT et al from .mqboard file
+# Performed here because we need to beat click's decorators.
+config = dotenv.find_dotenv(filename=".mqboard", usecwd=True)
+if config:
+    dotenv.load_dotenv(dotenv_path=config)
+
+logging.basicConfig(level=logging.WARNING)
+log = logging.getLogger('mqboard')
+log.setLevel(logging.DEBUG)
+
+_board = None
+
+BUFLEN = 2800 # "optimal" buffer size to make mqtt message fit into TCP segment
+
+# perform does all the work to execute a command on the board. It sends the command and collects the
+# response and calls the 'cb' callback with it.
+def perform(mqclient, ud, cmd, msg, cb, tail=None):
+    reply = None
+    t0 = ticks()
+    rcv_at = ticks()
+    exit_code = None
+    sz = 0
+    ack = -1
+    is_conn = False
+    def on_reply(cli, ud, msg):
+        nonlocal sz, ack, rcv_at, exit_code
+        log.debug("Received reply on topic '%s' with QoS %d", msg.topic, msg.qos)
+        # parse message header
+        if len(msg.payload) < 2: return
+        seq = ((msg.payload[0] & 0x7f) << 8) | msg.payload[1]
+        last = (msg.payload[0] & 0x80) != 0
+        # handle ACK for long streams (a bit of a hack!")
+        if len(msg.payload)-2 < 10 and msg.payload[2:].startswith(b"SEQ "):
+            try:
+                s = int(msg.payload[6:])
+                if s > ack:
+                    ack = s
+                    print(".", end="")
+                    return
+            except ValueError:
+                raise ValueError("Bad ACK received")
+        sz += len(msg.payload)-2
+        cb(msg.payload[2:], seq, last)
+        rcv_at = ticks()
+        if last:
+            dt = ticks()-t0
+            log.info("{:.3f}kB in {:.3f}s -> {:.3f}kB/s".format(sz/1024, dt, sz/1024/dt))
+            exit_code = 0 if last else 1
+    def on_error(cli, ud, message):
+        nonlocal exit_code
+        #log.debug("Error on MicroPython board: %s", str(message.payload, encoding='utf-8'))
+        print(str(message.payload, encoding='utf-8').strip())
+        dt = ticks()-t0
+        exit_code = 1
+    def on_conn(cli, ud, fl, rc):
+        nonlocal is_conn
+        if rc != 0: raise click.UsageError(paho.connack_string(rc))
+        sub = ud.mktopic("reply/out")
+        log.debug("Connected! Subscribing to %s", sub)
+        mqclient.subscribe(sub, qos=1)
+        mqclient.message_callback_add(sub, on_reply)
+        sub = ud.mktopic("reply/err")
+        mqclient.subscribe(sub, qos=1)
+        mqclient.message_callback_add(sub, on_error)
+        is_conn = True
+    def loop():
+        if ticks()-rcv_at > 60:
+            print("Timeout!")
+            sys.exit(1)
+        mqclient.loop(0.2)
+
+    mqclient.on_connect = on_conn
+    log.debug("Connecting to {}:{}".format(ud.server, ud.port))
+    mqclient.connect(ud.server, ud.port)
+    while not is_conn:
+        loop()
+
+    flowctrl = len(msg) > 100*1024 # hack
+    # iterate through content and send one buffer at a time
+    try:
+        seq=0
+        if isinstance(msg, str): msg = msg.encode()
+        buf = bytearray(BUFLEN+2)
+        last = 0
+        while not last:
+            while flowctrl and seq - ack > 16:
+                loop()
+            pub = ud.mktopic(cmd, tail=tail)
+            log.debug("Pub %s #%d", pub, seq)
+            buf[2:] = msg[:BUFLEN]
+            msg = msg[BUFLEN:]
+            last = len(msg) == 0
+            struct.pack_into("!H", buf, 0, last<<15 | seq)
+            sz += len(buf)
+            mqclient.publish(pub, buf)
+            seq += 1
+            loop()
+        log.debug("done publishing")
+    except Exception as e:
+        import traceback
+        log.error("Exception: %s", e)
+        traceback.print_exc()
+
+    while exit_code is None:
+        loop()
+    sys.exit(exit_code)
+
+def print_msg(msg, seq, last):
+    print(msg.decode('utf-8').rstrip())
+
+@click.group()
+@click.option("--server", "-s", envvar="MQBOARD_SERVER", required=False, default="localhost",
+    help="MQTT server hostname or IP address, default localhost or MQBOARD_PORT env var.",
+    metavar="SERVER",
+)
+@click.option("--port", "-p", envvar="MQBOARD_PORT", required=False, type=click.INT,
+    help="MQTT server port, default 1883 (non-TLS) or 8883 (TLS) or MQBOARD_PORT env var.",
+    metavar="PORT",
+)
+@click.option("--tls/--no-tls", envvar="MQBOARD_TLS", required=False, default=False,
+        help="enable TLS, default false or MQBOARD_TLS env var. --tls is implied if --psk is used.",
+    metavar="PSK",
+)
+@click.option("--psk", "-k", envvar="MQBOARD_PSK", required=False, type=click.STRING,
+        help="TLS pre-shared key for mutual auth in the form <psk_ident>:<hex_key>, default none or MQBOARD_PSK env var.",
+    metavar="PSK",
+)
+@click.option("--topic", "-t", envvar="MQBOARD_TOPIC", required=False, type=click.STRING,
+    help="Full MQTT topic prefix (just before eval/put/get/.. command), default none or MQBOARD_TOPIC env var. Mutually exclusive with --prefix/--board.",
+    metavar="TOPIC",
+)
+@click.option("--prefix", "-x", envvar="MQBOARD_PREFIX", required=False, default="esp32/mqb",
+    help="MQTT topic prefix without board name, default esp32/mqb or MQBOARD_PREFIX env var.",
+    metavar="PREFIX",
+)
+@click.option("--board", "-b", envvar="MQBOARD_BOARD", required=False, type=click.STRING,
+    help="Board name to append to --prefix to construct topic equivalent to --topic, default none or MQBOARD_BOARD env var.",
+    metavar="BOARD",
+)
+@click.version_option()
+def cli(server, port, tls, psk, topic, prefix, board):
+    """mqboard - MQTT MicroPython Tool
+
+    Mqboard is a tool to control MicroPython boards over MQTT.  Using
+    mqboard you can manipulate files on the board's internal filesystem, run
+    python commands, and perform an OTA upgrade of micropython.
+    """
+    global _mqclient
+    #print(server, port, tls, psk, topic, prefix, board)
+
+    # figure out where we're sending the data (MQTT topic)
+    if not topic:
+        if not prefix or not board:
+            raise click.UsageError("--topic or (--prefix and --board) are required")
+        topic = prefix.rstrip("/") + "/" + board.lstrip("/")
+    elif board:
+        # --prefix is OK since it's typically defaulted to something
+        raise click.UsageError("--topic and --board are mutually exclusive")
+    log.info("MQTT topic prefix: %s", topic)
+    # generate an ID we can use for the MQTT topics to match replies
+    topic_id = str(base64.urlsafe_b64encode(bytes(random.sample(range(256), k=6))), encoding='ascii')
+    # get a connection to the MQTT server going
+    if not port:
+        port = 8883 if tls or psk else 1883
+    _mqclient = paho.Client(client_id="mqboard", clean_session=True)
+    _mqclient.enable_logger(logging.getLogger("paho-mqtt"))
+    if tls:
+        _mqclient.tls_set()
+    # set the user_data in _mqclient so we can access it in the perform function
+    class ud:
+        def __init__(self, _server, _port, _topic, _topic_id, _board):
+            self.server, self.port, self.topic, self.topic_id, self.board =(
+                    _server, _port, _topic, _topic_id, _board)
+        def mktopic(self, cmd, tail=""):
+            return self.topic+"/"+cmd+"/"+self.topic_id+ ("/"+tail if tail else "")
+    _mqclient.user_data_set(ud(server, port, topic, topic_id, board))
+
+# ========== eval ==========
+@cli.command()
+@click.argument("expression", required=True)
+def eval(expression):
+    """
+    Evaluate a Python expression and return repr() of the result.
+    """
+    perform(_mqclient, _mqclient._userdata, "cmd/eval", expression, print_msg)
+
+# ========== exec ==========
+@cli.command()
+@click.argument("statement", required=True)
+def exec(statement):
+    """
+    Exec Python statement(s) and return the console output.
+    """
+    perform(_mqclient, _mqclient._userdata, "cmd/exec", statement, print_msg)
+
+# ========== get ==========
+@cli.command()
+@click.argument("remote_file")
+@click.argument("local_file", type=click.File("wb"), required=False)
+def get(remote_file, local_file):
+    """
+    Retrieve a file from the board, writing it to stdout if no local_file is
+    specified.
+    """
+    fd_seq = 0
+    def on_msg(message, seq, last):
+        nonlocal fd_seq
+        if seq == fd_seq:
+            if local_file is None:
+                print(message.decode("utf-8"))
+            else:
+                local_file.write(message)
+                if last: local_file.close()
+            fd_seq += 1
+    perform(_mqclient, _mqclient._userdata, "cmd/get", "", on_msg, tail=remote_file)
+
+# ========== mkdir ==========
+@cli.command()
+@click.option(
+    "--exists-okay", is_flag=True, help="Ignore if the directory already exists."
+)
+@click.argument("directory")
+def mkdir(directory, exists_okay):
+    """
+    Create a directory on the board.
+    """
+    expression = "import uos; uos.mkdir('%s')" % directory
+    perform(_mqclient, _mqclient._userdata, "cmd/exec", expression, print_msg)
+
+# ========== ls ==========
+@cli.command()
+@click.argument("directory", default="/")
+@click.option(
+    "--long_format",
+    "-l",
+    is_flag=True,
+    help="Print long format info including size of files.  Note the size of directories is not supported and will show 0 values.",
+)
+@click.option(
+    "--recursive",
+    "-r",
+    is_flag=True,
+    help="recursively list all files and (empty) directories.",
+)
+def ls(directory, long_format, recursive):
+    """List contents of a directory on the board.
+    """
+    cmd = "import uos\nfor f in uos.ilistdir('%s'):\n" \
+        " print('{:12} {}{}'.format(f[3]if len(f)>3 else 0,f[0],'/'if f[1]&0x4000 else ''))" \
+        % (directory)
+    perform(_mqclient, _mqclient._userdata, "cmd/exec", cmd, print_msg)
+
+# ========== put ==========
+@cli.command()
+@click.argument("local", type=click.Path(exists=True))
+@click.argument("remote", required=False)
+def put(local, remote):
+    """
+    Put a file or folder and its contents on the board.
+    """
+    # Use the local filename if no remote filename is provided.
+    if remote is None:
+        remote = os.path.basename(os.path.abspath(local))
+    # Check if path is a folder and do recursive copy of everything inside it.
+    # Otherwise it's a file and should simply be copied over.
+    if os.path.isdir(local):
+        print("Recursive put is not yet supported")
+        sys.exit(1)
+        # Directory copy, create the directory and walk all children to copy
+        # over the files.
+        board_files = files.Files(_board)
+        for parent, child_dirs, child_files in os.walk(local):
+            # Create board filesystem absolute path to parent directory.
+            remote_parent = posixpath.normpath(
+                posixpath.join(remote, os.path.relpath(parent, local))
+            )
+            try:
+                # Create remote parent directory.
+                board_files.mkdir(remote_parent)
+            except files.DirectoryExistsError:
+                # Ignore errors for directories that already exist.
+                pass
+            # Loop through all the files and put them on the board too.
+            for filename in child_files:
+                with open(os.path.join(parent, filename), "rb") as infile:
+                    remote_filename = posixpath.join(remote_parent, filename)
+                    board_files.put(remote_filename, infile.read())
+
+
+    else:
+        # File copy, open the file and copy its contents to the board.
+        def on_msg(msg, seq, last):
+            pass
+        # Put the file on the board.
+        with open(local, "rb") as infile:
+            contents = infile.read()
+            perform(_mqclient, _mqclient._userdata, "cmd/put", contents, on_msg, tail=remote)
+
+
+# ========== ota ==========
+@cli.command()
+@click.argument("application_bin", type=click.Path(exists=True))
+def ota(local):
+    """
+    Perform a MicroPython firmware update over-the-air
+    """
+    # open the file and copy its contents to the board.
+    def on_msg(msg, seq, last):
+        pass
+    # Put the file on the board.
+    with open(local, "rb") as infile:
+        contents = infile.read()
+        sha = hashlib.sha256(contents).hexdigest()
+        perform(_mqclient, _mqclient._userdata, "cmd/ota", contents, on_msg, tail=sha)
+
+
+# ========== rm ==========
+@cli.command()
+@click.argument("remote_file")
+def rm(remote_file):
+    """
+    Remove a file from the board.
+    """
+    expression = "import uos; uos.remove('%s')" % remote_file
+    perform(_mqclient, _mqclient._userdata, "cmd/exec", expression, print_msg)
+
+
+# ========== rmdir ==========
+@cli.command()
+@click.argument("remote_dir")
+def rmdir(remote_dir, missing_okay):
+    """
+    Remove an empty directory from the board.
+    """
+    expression = "import uos; uos.rmdir('%s')" % remote_dir
+    perform(_mqclient, _mqclient._userdata, "cmd/exec", expression, print_msg)
+
+
+@cli.command()
+@click.argument("local_file")
+@click.option(
+    "--no-output",
+    "-n",
+    is_flag=True,
+    help="Run the code without waiting for it to finish and print output.",
+)
+def run(local_file, no_output):
+    """
+    Run a script and print its output.
+    """
+    # Run the provided file and print its output.
+    board_files = files.Files(_board)
+    try:
+        output = board_files.run(local_file, not no_output)
+        if output is not None:
+            print(output.decode("utf-8"), end="")
+    except IOError:
+        click.echo(
+            "Failed to find or read input file: {0}".format(local_file), err=True
+        )
+
+
+
+if __name__ == "__main__":
+    cli()
+
+# Adafruit MicroPython Tool - Command Line Interface
+# Author: Tony DiCola
+# Copyright (c) 2016 Adafruit Industries
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
