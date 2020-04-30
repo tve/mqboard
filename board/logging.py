@@ -1,4 +1,4 @@
-import sys
+import sys, time
 
 CRITICAL = 50
 ERROR    = 40
@@ -8,11 +8,11 @@ DEBUG    = 10
 NOTSET   = 0
 
 _level_dict = {
-    CRITICAL: "CRIT",
-    ERROR: "ERROR",
-    WARNING: "WARN",
-    INFO: "INFO",
-    DEBUG: "DEBUG",
+    CRITICAL: "C",
+    ERROR: "E",
+    WARNING: "W",
+    INFO: "I",
+    DEBUG: "D",
 }
 
 _stream = sys.stderr
@@ -37,8 +37,9 @@ class Logger:
         return level >= (self.level or _level)
 
     def log(self, level, msg, *args):
+        t = time.ticks_ms() % 100000000
         if level >= (self.level or _level):
-            _stream.write("%s:%s:" % (self._level_str(level), self.name))
+            _stream.write("%s %d %8s: " % (self._level_str(level), t, self.name))
             if not args:
                 print(msg, file=_stream)
             else:
