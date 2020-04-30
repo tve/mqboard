@@ -15,10 +15,12 @@ wifi_pass = 'my-pass'
 # info to connect to mqtt broker, the keys in this hash match mqtt_async.MQTTConfig and get merged
 # into the default mqtt_async.config. This means that what's not meaningful below can be left out.
 mqtt_config = {
-    "server"   : '192.168.0.14',
-    "port"     : 8883,
-    "hostname" : 'broker.example.com',
-    "ident"    : 'esp32-test-' + location,
-    "user"     : 'test/esp32',
-    "passwd"   : '00000000000000000000000000000000',
+    "server"    : '192.168.0.14',
+    "port"      : 8883,
+    "ssl_params": { "server_hostname": "broker.example.com" },
+    "client_id" : 'esp32-test-' + location,
+    "user"      : 'test/esp32',
+    "password"  : '00000000000000000000000000000000',
+    "ssid"      : wifi_ssid,
+    "wifi_pw"   : wifi_pass,
 }
