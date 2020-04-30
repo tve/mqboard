@@ -2,7 +2,7 @@
 #
 # Requires mqtt_async for asyncio-based MQTT.
 
-import io, os, sys, time, board, struct, gc
+import io, os, sys, time, board, struct, gc, micropython
 from mqtt_async import MQTTClient, config
 from esp32 import Partition
 import uasyncio as asyncio
@@ -14,9 +14,13 @@ import logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
-TOPIC = 'esp32/mqb/' + board.location + "/"
+try:
+    TOPIC = config["user"] + '/mqb/'
+except TypeError:
+    TOPIC = "esp32/" + board.location + '/mqb/'
 TOPIC_CMD = TOPIC + "cmd/"
-BUFLEN=2800 # data bytes to make message fit into two std TCP segments
+PKTLEN=1400      # data bytes that reasonably fit into a TCP packet
+BUFLEN=PKTLEN*2  # good number of data bytes to stream files
 BLOCKLEN = const(4096) # data bytes in a flash block
 ERR_SINGLEMSG = "only single message supported"
 
@@ -85,41 +89,117 @@ class OTA:
         self.part.set_boot()
         return b'OK'
 
+# Stream interface to pass to dupterm. It is used to collect output from the repl, or
+# more precisely, from sys.stdout  It does not feed any input to the repl because that's pointless
+# as the repl is stuck waiting for the uasyncio loop to finish and thus doesn't process any input.
+class ReplStream(io.IOBase):
+
+    # Create a repl interface and start publishing repl output using the pub function passed as
+    # argument. Pub must accept a byte buffer.
+    def __init__(self):
+        self.tx_buf = bytearray(PKTLEN)
+        self.tx_len = 0
+        self.ev = asyncio.Event()
+
+    def read(self, sz=None): return None
+    def readinto(self, buf): return None
+    def ioctl(self, op, arg): return 0
+
+    # sender should be started as a background task so it can tick away and
+    # publish buffered data. It deliberately sleeps for 100ms and delays sending stuff so
+    # there is a chance to stuff more per packet.
+    # pub should be an async function that takes a bytes argument
+    async def sender(self, pub):
+        asyncio.get_event_loop().create_task(self._ticker())
+        while True:
+            try:
+                # publish what we've got
+                if self.tx_len > 0:
+                    tx = self.tx_buf[:self.tx_len]
+                    self.tx_len = 0
+                    if len(self.tx_buf) > PKTLEN:
+                        self.tx_buf = bytearray(PKTLEN)
+                    await pub(tx)
+                #else:
+                #    await pub(b"Nothing...\n")
+                # wait for event so we send more
+                await self.ev.wait()
+                self.ev.clear()
+            except Exception:
+                await asyncio.sleep(200)
+
+    async def _ticker(self):
+        while True:
+            self.ev.set()
+            await asyncio.sleep_ms(100)
+
+    def write(self, buf):
+        #if buf[:5] == b"TADA:": return
+        #print("TADA: {}\n".format(str(buf, "utf-8")), end='')
+        tx_len = self.tx_len
+        lb = len(buf)
+        if lb <= PKTLEN-tx_len:
+            # buf fits into tx_buf: copy it
+            self.tx_buf[tx_len:tx_len+lb] = buf
+            tx_len += lb
+        elif lb < PKTLEN:
+            # buf doesn't fit and is less than total buffer: shift over
+            self.tx_buf[:-lb] = self.tx_buf[lb:]
+            self.tx_buf[-lb:] = buf
+            tx_len = PKTLEN
+        else:
+            # buf doesn't fit, only grab its tail
+            self.tx_buf = buf[-PKTLEN:]
+            tx_len = PKTLEN
+        # if buf is more than 3/4 packet, trigger a send
+        if tx_len > PKTLEN*3//4:
+            self.ev.set()
+        self.tx_len = tx_len
+        return lb
 
 class MQRepl:
-    def __init__(self):
-        self._mqclient = None
+    def __init__(self, config):
         self._ota = None
         self._put_fd = None
         self._put_seq = None
         self.CMDS = { 'eval': self._do_eval, 'exec': self._do_exec, 'get': self._do_get,
                 'put': self._do_put, 'ota': self._do_ota }
-
-    async def start(self, config):
-        board.fail_led(True)
+        # config MQTT
         #config['ssl_params'] = {'psk_ident':board.mqtt_ident, 'psk_key':board.mqtt_key}
         config["subs_cb"] = self._sub_cb
         config["wifi_coro"] = self._wifi_cb
-        config["debug"] = 1
         # get a clean connection
         config["clean"] = True
         config["connect_coro"] = self._conn_cb
-        self._mqclient = MQTTClient(config)
-        await self._mqclient.connect()
-        board.fail_led(False)
+        self.mqclient = MQTTClient(config)
 
+    async def _ttypub(self, buf):
+        if self.mqclient:
+            await self.mqclient.publish(TOPIC+"ttyout", buf, qos=1, sync=False)
+
+    async def start(self):
+        board.fail_led(True)
+        await self.mqclient.connect()
+        micropython.mem_info()
+        board.fail_led(False)
+        # capture stdout
+        ttyout = ReplStream()
+        asyncio.get_event_loop().create_task(ttyout.sender(self._ttypub))
+        os.dupterm(ttyout)
 
     async def stop(self):
-        await self._mqclient.disconnect()
-        self._mqclient = None
+        await self.mqclient.disconnect()
+        self.mqclient = None
+        os.dupterm(None)
 
     async def watchdog(self):
-        while self._mqclient:
+        while self.mqclient:
             await asyncio.sleep(60)
             log.info("Still watching...")
+            micropython.mem_info()
 
-    async def run(self, config):
-        await self.start(config)
+    async def run(self):
+        await self.start()
         await self.watchdog()
 
     # Handlers for commands
@@ -169,14 +249,14 @@ class MQRepl:
             self._put_seq = 1 # next seq expected
         elif self._put_seq is None:
             raise ValueError("missing first message")
-        elif self._put_seq < seq:
+        elif seq < self._put_seq:
             # "duplicate message"
             return None
-        elif self._put_seq > seq:
-            raise ValueError("message missing")
+        elif seq > self._put_seq:
+            raise ValueError("message missing: {} vs. {}".format(seq, self._put_seq))
         else:
             self._put_seq += 1
-        self._put_fd.write(msg[2:])
+        self._put_fd.write(msg)
         if last:
             self._put_fd.close()
             self._put_fd = None
@@ -193,7 +273,6 @@ class MQRepl:
             ret = await self._ota.handle(fname, msg, seq, last)
             if last:
                 self._ota = None
-                gc.collect()
             return ret
 
     # Helpers
@@ -207,7 +286,7 @@ class MQRepl:
             last = len(buf) == 2
             struct.pack_into("!H", buf, 0, last<<15 | seq)
             log.debug("pub {} -> {}".format(len(buf), topic))
-            await self._mqclient.publish(topic, buf, qos=1, sync=last)
+            await self.mqclient.publish(topic, buf, qos=1, sync=last)
             if last:
                 stream.close()
                 return None
@@ -243,7 +322,7 @@ class MQRepl:
             # parse message header (first two bytes)
             seq = ((msg[0] & 0x7f) << 8) | msg[1]
             last = (msg[0] & 0x80) != 0
-            msg = msg[2:]
+            msg = memoryview(msg)[2:]
             try:
                 fun = self.CMDS[cmd]
                 dt = time.ticks_diff(time.ticks_ms(), self.tl)
@@ -260,18 +339,19 @@ class MQRepl:
                         loop.create_task(self._send_stream(rtopic, resp))
                     else:
                         log.debug("pub {} -> {}".format(len(resp), rtopic))
-                        loop.create_task(self._mqclient.publish(rtopic, b'\x80\0' + resp, qos=1))
+                        loop.create_task(self.mqclient.publish(rtopic, b'\x80\0' + resp, qos=1))
                 except ValueError as e:
                     buf = "MQRepl protocol error {}: {}".format(cmd, e.args[0])
-                    loop.create_task(self._mqclient.publish(errtopic, buf, qos=1))
+                    loop.create_task(self.mqclient.publish(errtopic, buf, qos=1))
                 except Exception as e:
                     errbuf = io.BytesIO(1400)
                     sys.print_exception(e, errbuf)
                     errbuf = errbuf.getvalue()
                     log.warning("Exception: <<%s>>", errbuf)
-                    loop.create_task(self._mqclient.publish(errtopic, errbuf, qos=1))
+                    micropython.mem_info()
+                    loop.create_task(self.mqclient.publish(errtopic, errbuf, qos=1))
             except KeyError:
-                loop.create_task(self._mqclient.publish(errtopic, "Command '" + cmd + "' not supported", qos=1))
+                loop.create_task(self.mqclient.publish(errtopic, "Command '" + cmd + "' not supported", qos=1))
 
     async def _wifi_cb(self, state):
         board.fail_led(not state)  # Light LED when WiFi down
@@ -287,9 +367,7 @@ class MQRepl:
 
 def doit():
     print("\n===== esp32 mqttrepl at `{}` starting at {} =====\n".format(board.location, time.time()))
-    logging.basicConfig(level=logging.INFO)
-    ll=logging;ll._level_dict={ll.CRITICAL:'C',ll.ERROR:'E',ll.WARNING:'W',ll.INFO:'I',ll.DEBUG:'D'}
-    mqr = MQRepl()
-    asyncio.run(mqr.run(config))
+    mqr = MQRepl(config)
+    asyncio.run(mqr.run())
 
 if __name__ == '__main__': doit()
