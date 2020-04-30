@@ -1,9 +1,7 @@
 #! /usr/bin/python
 # MQBoard - Command Line Interface
 # Copyright (c) 2020 by Thorsten von Eicken
-# Adapted from Adafruit's ampy, see copyright at the bottom.
 
-from __future__ import print_function
 import os, sys, platform, posixpath, re, random, base64, logging, struct, time, hashlib
 
 def ticks(): return time.monotonic()
@@ -12,17 +10,9 @@ import click
 import dotenv
 import paho.mqtt.client as paho
 
-# Load MQBOARD_PORT et al from .mqboard file
-# Performed here because we need to beat click's decorators.
-config = dotenv.find_dotenv(filename=".mqboard", usecwd=True)
-if config:
-    dotenv.load_dotenv(dotenv_path=config)
-
 logging.basicConfig(level=logging.WARNING)
 log = logging.getLogger('mqboard')
 log.setLevel(logging.DEBUG)
-
-_board = None
 
 BUFLEN = 2800 # "optimal" buffer size to make mqtt message fit into TCP segment
 
@@ -78,7 +68,7 @@ def perform(mqclient, ud, cmd, msg, cb, tail=None):
         mqclient.message_callback_add(sub, on_error)
         is_conn = True
     def loop():
-        if ticks()-rcv_at > 60:
+        if ticks()-rcv_at > ud.timeout:
             print("Timeout!")
             sys.exit(1)
         mqclient.loop(0.2)
@@ -100,13 +90,13 @@ def perform(mqclient, ud, cmd, msg, cb, tail=None):
             while flowctrl and seq - ack > 16:
                 loop()
             pub = ud.mktopic(cmd, tail=tail)
-            log.debug("Pub %s #%d", pub, seq)
             buf[2:] = msg[:BUFLEN]
             msg = msg[BUFLEN:]
             last = len(msg) == 0
             struct.pack_into("!H", buf, 0, last<<15 | seq)
             sz += len(buf)
-            mqclient.publish(pub, buf)
+            log.info("Pub %s #%d last=%d len=%d", pub, seq, last, len(buf))
+            mqclient.publish(pub, buf, qos=1)
             seq += 1
             loop()
         log.debug("done publishing")
@@ -135,59 +125,41 @@ def print_msg(msg, seq, last):
         help="enable TLS, default false or MQBOARD_TLS env var. --tls is implied if --psk is used.",
     metavar="PSK",
 )
-@click.option("--psk", "-k", envvar="MQBOARD_PSK", required=False, type=click.STRING,
-        help="TLS pre-shared key for mutual auth in the form <psk_ident>:<hex_key>, default none or MQBOARD_PSK env var.",
-    metavar="PSK",
+@click.option("--timeout", "-T", envvar="MQBOARD_TIMEOUT", required=False, default="60",
+    help="Timeout when waiting for a reply",
+    metavar="TIMEOUT",
 )
-@click.option("--topic", "-t", envvar="MQBOARD_TOPIC", required=False, type=click.STRING,
-    help="Full MQTT topic prefix (just before eval/put/get/.. command), default none or MQBOARD_TOPIC env var. Mutually exclusive with --prefix/--board.",
+@click.option("--topic", "-t", envvar="MQBOARD_TOPIC", required=True, type=click.STRING,
+    help="MQTT topic prefix (just before 'cmd')",
     metavar="TOPIC",
 )
-@click.option("--prefix", "-x", envvar="MQBOARD_PREFIX", required=False, default="esp32/mqb",
-    help="MQTT topic prefix without board name, default esp32/mqb or MQBOARD_PREFIX env var.",
-    metavar="PREFIX",
-)
-@click.option("--board", "-b", envvar="MQBOARD_BOARD", required=False, type=click.STRING,
-    help="Board name to append to --prefix to construct topic equivalent to --topic, default none or MQBOARD_BOARD env var.",
-    metavar="BOARD",
-)
 @click.version_option()
-def cli(server, port, tls, psk, topic, prefix, board):
+def cli(server, port, tls, timeout, topic):
     """mqboard - MQTT MicroPython Tool
 
-    Mqboard is a tool to control MicroPython boards over MQTT.  Using
-    mqboard you can manipulate files on the board's internal filesystem, run
-    python commands, and perform an OTA upgrade of micropython.
+    Mqboard controls MicroPython boards over MQTT. It can manipulate files on
+    the board's internal filesystem, run python commands, and perform an OTA
+    upgrade of micropython.
     """
     global _mqclient
-    #print(server, port, tls, psk, topic, prefix, board)
 
-    # figure out where we're sending the data (MQTT topic)
-    if not topic:
-        if not prefix or not board:
-            raise click.UsageError("--topic or (--prefix and --board) are required")
-        topic = prefix.rstrip("/") + "/" + board.lstrip("/")
-    elif board:
-        # --prefix is OK since it's typically defaulted to something
-        raise click.UsageError("--topic and --board are mutually exclusive")
-    log.info("MQTT topic prefix: %s", topic)
     # generate an ID we can use for the MQTT topics to match replies
     topic_id = str(base64.urlsafe_b64encode(bytes(random.sample(range(256), k=6))), encoding='ascii')
     # get a connection to the MQTT server going
     if not port:
-        port = 8883 if tls or psk else 1883
-    _mqclient = paho.Client(client_id="mqboard", clean_session=True)
+        port = 8883 if tls else 1883
+    _mqclient = paho.Client(client_id="mqboard-"+topic_id, clean_session=True)
     _mqclient.enable_logger(logging.getLogger("paho-mqtt"))
     if tls:
         _mqclient.tls_set()
     # set the user_data in _mqclient so we can access it in the perform function
     class ud:
-        def __init__(self, _server, _port, _topic, _topic_id, _board):
-            self.server, self.port, self.topic, self.topic_id, self.board =(
-                    _server, _port, _topic, _topic_id, _board)
+        def __init__(self, _server, _port, _topic, _topic_id, _timeout):
+            self.server, self.port, self.topic, self.topic_id, self.timeout =(
+                    _server, _port, _topic, _topic_id, int(_timeout))
         def mktopic(self, cmd, tail=""):
             return self.topic+"/"+cmd+"/"+self.topic_id+ ("/"+tail if tail else "")
-    _mqclient.user_data_set(ud(server, port, topic, topic_id, board))
+    _mqclient.user_data_set(ud(server, port, topic, topic_id, timeout))
 
 # ========== eval ==========
 @cli.command()
@@ -221,7 +193,7 @@ def get(remote_file, local_file):
         nonlocal fd_seq
         if seq == fd_seq:
             if local_file is None:
-                print(message.decode("utf-8"))
+                print(message.decode("utf-8"), end='')
             else:
                 local_file.write(message)
                 if last: local_file.close()
@@ -377,25 +349,3 @@ def run(local_file, no_output):
 
 if __name__ == "__main__":
     cli()
-
-# Adafruit MicroPython Tool - Command Line Interface
-# Author: Tony DiCola
-# Copyright (c) 2016 Adafruit Industries
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
