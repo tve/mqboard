@@ -2,39 +2,42 @@
 # MQBoard - Command Line Interface
 # Copyright (c) 2020 by Thorsten von Eicken
 
-import os, sys, platform, posixpath, re, random, base64, logging, struct, time, hashlib
-
-def ticks(): return time.monotonic()
-
+import os, sys, posixpath, random, base64, logging, struct, time, hashlib
 import click
 import dotenv
 import paho.mqtt.client as paho
 
 logging.basicConfig(level=logging.WARNING)
-log = logging.getLogger('mqboard')
+log = logging.getLogger("mqboard")
 log.setLevel(logging.DEBUG)
 
-BUFLEN = 2800 # "optimal" buffer size to make mqtt message fit into TCP segment
+BUFLEN = 2800  # "optimal" buffer size to make mqtt message fit into TCP segment
 
-# perform does all the work to execute a command on the board. It sends the command and collects the
+
+def ticks():
+    return time.monotonic()
+
+
+# perform does all the work to execute a command on the board. It sends the command, collects the
 # response and calls the 'cb' callback with it.
 def perform(mqclient, ud, cmd, msg, cb, tail=None):
-    reply = None
     t0 = ticks()
     rcv_at = ticks()
     exit_code = None
     sz = 0
     ack = -1
     is_conn = False
+
     def on_reply(cli, ud, msg):
         nonlocal sz, ack, rcv_at, exit_code
         log.debug("Received reply on topic '%s' with QoS %d", msg.topic, msg.qos)
         # parse message header
-        if len(msg.payload) < 2: return
-        seq = ((msg.payload[0] & 0x7f) << 8) | msg.payload[1]
+        if len(msg.payload) < 2:
+            return
+        seq = ((msg.payload[0] & 0x7F) << 8) | msg.payload[1]
         last = (msg.payload[0] & 0x80) != 0
         # handle ACK for long streams (a bit of a hack!")
-        if len(msg.payload)-2 < 10 and msg.payload[2:].startswith(b"SEQ "):
+        if len(msg.payload) - 2 < 10 and msg.payload[2:].startswith(b"SEQ "):
             try:
                 s = int(msg.payload[6:])
                 if s > ack:
@@ -43,22 +46,25 @@ def perform(mqclient, ud, cmd, msg, cb, tail=None):
                     return
             except ValueError:
                 raise ValueError("Bad ACK received")
-        sz += len(msg.payload)-2
+        sz += len(msg.payload) - 2
         cb(msg.payload[2:], seq, last)
         rcv_at = ticks()
         if last:
-            dt = ticks()-t0
-            log.info("{:.3f}kB in {:.3f}s -> {:.3f}kB/s".format(sz/1024, dt, sz/1024/dt))
+            dt = ticks() - t0
+            log.info("{:.3f}kB in {:.3f}s -> {:.3f}kB/s".format(sz / 1024, dt, sz / 1024 / dt))
             exit_code = 0 if last else 1
+
     def on_error(cli, ud, message):
         nonlocal exit_code
-        #log.debug("Error on MicroPython board: %s", str(message.payload, encoding='utf-8'))
-        print(str(message.payload, encoding='utf-8').strip())
-        dt = ticks()-t0
+        # log.debug("Error on MicroPython board: %s", str(message.payload, encoding='utf-8'))
+        print(str(message.payload, encoding="utf-8").strip())
+        dt = ticks() - t0
         exit_code = 1
+
     def on_conn(cli, ud, fl, rc):
         nonlocal is_conn
-        if rc != 0: raise click.UsageError(paho.connack_string(rc))
+        if rc != 0:
+            raise click.UsageError(paho.connack_string(rc))
         sub = ud.mktopic("reply/out")
         log.debug("Connected! Subscribing to %s", sub)
         mqclient.subscribe(sub, qos=1)
@@ -67,8 +73,9 @@ def perform(mqclient, ud, cmd, msg, cb, tail=None):
         mqclient.subscribe(sub, qos=1)
         mqclient.message_callback_add(sub, on_error)
         is_conn = True
+
     def loop():
-        if ticks()-rcv_at > ud.timeout:
+        if ticks() - rcv_at > ud.timeout:
             print("Timeout!")
             sys.exit(1)
         mqclient.loop(0.2)
@@ -79,12 +86,13 @@ def perform(mqclient, ud, cmd, msg, cb, tail=None):
     while not is_conn:
         loop()
 
-    flowctrl = len(msg) > 100*1024 # hack
+    flowctrl = len(msg) > 100 * 1024  # hack
     # iterate through content and send one buffer at a time
     try:
-        seq=0
-        if isinstance(msg, str): msg = msg.encode()
-        buf = bytearray(BUFLEN+2)
+        seq = 0
+        if isinstance(msg, str):
+            msg = msg.encode()
+        buf = bytearray(BUFLEN + 2)
         last = 0
         while not last:
             while flowctrl and seq - ack > 16:
@@ -93,7 +101,7 @@ def perform(mqclient, ud, cmd, msg, cb, tail=None):
             buf[2:] = msg[:BUFLEN]
             msg = msg[BUFLEN:]
             last = len(msg) == 0
-            struct.pack_into("!H", buf, 0, last<<15 | seq)
+            struct.pack_into("!H", buf, 0, last << 15 | seq)
             sz += len(buf)
             log.info("Pub %s #%d last=%d len=%d", pub, seq, last, len(buf))
             mqclient.publish(pub, buf, qos=1)
@@ -102,6 +110,7 @@ def perform(mqclient, ud, cmd, msg, cb, tail=None):
         log.debug("done publishing")
     except Exception as e:
         import traceback
+
         log.error("Exception: %s", e)
         traceback.print_exc()
 
@@ -109,27 +118,54 @@ def perform(mqclient, ud, cmd, msg, cb, tail=None):
         loop()
     sys.exit(exit_code)
 
+
+# print_msg simply prints the contents of a received mqtt message.
 def print_msg(msg, seq, last):
-    print(msg.decode('utf-8').rstrip())
+    print(msg.decode("utf-8").rstrip())
+
 
 @click.group()
-@click.option("--server", "-s", envvar="MQBOARD_SERVER", required=False, default="localhost",
+@click.option(
+    "--server",
+    "-s",
+    envvar="MQBOARD_SERVER",
+    required=False,
+    default="localhost",
     help="MQTT server hostname or IP address, default localhost or MQBOARD_PORT env var.",
     metavar="SERVER",
 )
-@click.option("--port", "-p", envvar="MQBOARD_PORT", required=False, type=click.INT,
+@click.option(
+    "--port",
+    "-p",
+    envvar="MQBOARD_PORT",
+    required=False,
+    type=click.INT,
     help="MQTT server port, default 1883 (non-TLS) or 8883 (TLS) or MQBOARD_PORT env var.",
     metavar="PORT",
 )
-@click.option("--tls/--no-tls", envvar="MQBOARD_TLS", required=False, default=False,
-        help="enable TLS, default false or MQBOARD_TLS env var. --tls is implied if --psk is used.",
+@click.option(
+    "--tls/--no-tls",
+    envvar="MQBOARD_TLS",
+    required=False,
+    default=False,
+    help="enable TLS, default false or MQBOARD_TLS env var. --tls is implied if --psk is used.",
     metavar="PSK",
 )
-@click.option("--timeout", "-T", envvar="MQBOARD_TIMEOUT", required=False, default="60",
+@click.option(
+    "--timeout",
+    "-T",
+    envvar="MQBOARD_TIMEOUT",
+    required=False,
+    default="60",
     help="Timeout when waiting for a reply",
     metavar="TIMEOUT",
 )
-@click.option("--topic", "-t", envvar="MQBOARD_TOPIC", required=True, type=click.STRING,
+@click.option(
+    "--topic",
+    "-t",
+    envvar="MQBOARD_TOPIC",
+    required=True,
+    type=click.STRING,
     help="MQTT topic prefix (just before 'cmd')",
     metavar="TOPIC",
 )
@@ -138,46 +174,56 @@ def cli(server, port, tls, timeout, topic):
     """mqboard - MQTT MicroPython Tool
 
     Mqboard controls MicroPython boards over MQTT. It can manipulate files on
-    the board's internal filesystem, run python commands, and perform an OTA
+    the board's internal filesystem, run python commands, or perform an OTA
     upgrade of micropython.
     """
     global _mqclient
 
     # generate an ID we can use for the MQTT topics to match replies
-    topic_id = str(base64.urlsafe_b64encode(bytes(random.sample(range(256), k=6))), encoding='ascii')
+    topic_id = str(
+        base64.urlsafe_b64encode(bytes(random.sample(range(256), k=6))), encoding="ascii"
+    )
     # get a connection to the MQTT server going
     if not port:
         port = 8883 if tls else 1883
-    _mqclient = paho.Client(client_id="mqboard-"+topic_id, clean_session=True)
+    _mqclient = paho.Client(client_id="mqboard-" + topic_id, clean_session=True)
     _mqclient.enable_logger(logging.getLogger("paho-mqtt"))
     if tls:
         _mqclient.tls_set()
     # set the user_data in _mqclient so we can access it in the perform function
     class ud:
         def __init__(self, _server, _port, _topic, _topic_id, _timeout):
-            self.server, self.port, self.topic, self.topic_id, self.timeout =(
-                    _server, _port, _topic, _topic_id, int(_timeout))
+            self.server, self.port, self.topic, self.topic_id, self.timeout = (
+                _server,
+                _port,
+                _topic,
+                _topic_id,
+                int(_timeout),
+            )
+
         def mktopic(self, cmd, tail=""):
-            return self.topic+"/"+cmd+"/"+self.topic_id+ ("/"+tail if tail else "")
+            return self.topic + "/" + cmd + "/" + self.topic_id + ("/" + tail if tail else "")
+
     _mqclient.user_data_set(ud(server, port, topic, topic_id, timeout))
+
 
 # ========== eval ==========
 @cli.command()
 @click.argument("expression", required=True)
 def eval(expression):
-    """
-    Evaluate a Python expression and return repr() of the result.
+    """Evaluate a Python expression on the board and return repr() of the result.
     """
     perform(_mqclient, _mqclient._userdata, "cmd/eval", expression, print_msg)
+
 
 # ========== exec ==========
 @cli.command()
 @click.argument("statement", required=True)
 def exec(statement):
-    """
-    Exec Python statement(s) and return the console output.
+    """Exec Python statement(s) on the board and return the console output.
     """
     perform(_mqclient, _mqclient._userdata, "cmd/exec", statement, print_msg)
+
 
 # ========== get ==========
 @cli.command()
@@ -189,60 +235,54 @@ def get(remote_file, local_file):
     specified.
     """
     fd_seq = 0
+
     def on_msg(message, seq, last):
         nonlocal fd_seq
         if seq == fd_seq:
             if local_file is None:
-                print(message.decode("utf-8"), end='')
+                print(message.decode("utf-8"), end="")
             else:
                 local_file.write(message)
-                if last: local_file.close()
+                if last:
+                    local_file.close()
             fd_seq += 1
+
     perform(_mqclient, _mqclient._userdata, "cmd/get", "", on_msg, tail=remote_file)
+
 
 # ========== mkdir ==========
 @cli.command()
-@click.option(
-    "--exists-okay", is_flag=True, help="Ignore if the directory already exists."
-)
+# @click.option("--ignore", "-i", is_flag=True, help="Ignore if the directory already exists.")
 @click.argument("directory")
 def mkdir(directory, exists_okay):
-    """
-    Create a directory on the board.
+    """Create a directory on the board.
     """
     expression = "import uos; uos.mkdir('%s')" % directory
     perform(_mqclient, _mqclient._userdata, "cmd/exec", expression, print_msg)
 
+
 # ========== ls ==========
 @cli.command()
 @click.argument("directory", default="/")
-@click.option(
-    "--long_format",
-    "-l",
-    is_flag=True,
-    help="Print long format info including size of files.  Note the size of directories is not supported and will show 0 values.",
-)
-@click.option(
-    "--recursive",
-    "-r",
-    is_flag=True,
-    help="recursively list all files and (empty) directories.",
-)
+# @click.option("--long_format", "-l", is_flag=True, help="Print long format info.")
+# @click.option("--recursive", "-r", is_flag=True, help="Recursively list files and directories.")
 def ls(directory, long_format, recursive):
     """List contents of a directory on the board.
     """
-    cmd = "import uos\nfor f in uos.ilistdir('%s'):\n" \
-        " print('{:12} {}{}'.format(f[3]if len(f)>3 else 0,f[0],'/'if f[1]&0x4000 else ''))" \
+    cmd = (
+        "import uos\nfor f in uos.ilistdir('%s'):\n"
+        " print('{:12} {}{}'.format(f[3]if len(f)>3 else 0,f[0],'/'if f[1]&0x4000 else ''))"
         % (directory)
+    )
     perform(_mqclient, _mqclient._userdata, "cmd/exec", cmd, print_msg)
+
 
 # ========== put ==========
 @cli.command()
 @click.argument("local", type=click.Path(exists=True))
 @click.argument("remote", required=False)
 def put(local, remote):
-    """
-    Put a file or folder and its contents on the board.
+    """Put a file or folder and its contents on the board.
     """
     # Use the local filename if no remote filename is provided.
     if remote is None:
@@ -272,11 +312,11 @@ def put(local, remote):
                     remote_filename = posixpath.join(remote_parent, filename)
                     board_files.put(remote_filename, infile.read())
 
-
     else:
         # File copy, open the file and copy its contents to the board.
         def on_msg(msg, seq, last):
             pass
+
         # Put the file on the board.
         with open(local, "rb") as infile:
             contents = infile.read()
@@ -287,12 +327,12 @@ def put(local, remote):
 @cli.command()
 @click.argument("application_bin", type=click.Path(exists=True))
 def ota(local):
-    """
-    Perform a MicroPython firmware update over-the-air
+    """Perform a MicroPython firmware update over-the-air
     """
     # open the file and copy its contents to the board.
     def on_msg(msg, seq, last):
         pass
+
     # Put the file on the board.
     with open(local, "rb") as infile:
         contents = infile.read()
@@ -304,8 +344,7 @@ def ota(local):
 @cli.command()
 @click.argument("remote_file")
 def rm(remote_file):
-    """
-    Remove a file from the board.
+    """Remove a file from the board.
     """
     expression = "import uos; uos.remove('%s')" % remote_file
     perform(_mqclient, _mqclient._userdata, "cmd/exec", expression, print_msg)
@@ -315,37 +354,33 @@ def rm(remote_file):
 @cli.command()
 @click.argument("remote_dir")
 def rmdir(remote_dir, missing_okay):
-    """
-    Remove an empty directory from the board.
+    """Remove an empty directory from the board.
     """
     expression = "import uos; uos.rmdir('%s')" % remote_dir
     perform(_mqclient, _mqclient._userdata, "cmd/exec", expression, print_msg)
 
 
-@cli.command()
-@click.argument("local_file")
-@click.option(
-    "--no-output",
-    "-n",
-    is_flag=True,
-    help="Run the code without waiting for it to finish and print output.",
-)
-def run(local_file, no_output):
-    """
-    Run a script and print its output.
-    """
-    # Run the provided file and print its output.
-    board_files = files.Files(_board)
-    try:
-        output = board_files.run(local_file, not no_output)
-        if output is not None:
-            print(output.decode("utf-8"), end="")
-    except IOError:
-        click.echo(
-            "Failed to find or read input file: {0}".format(local_file), err=True
-        )
-
-
+# @cli.command()
+# @click.argument("local_file")
+# @click.option(
+#    "--no-output",
+#    "-n",
+#    is_flag=True,
+#    help="Run the code without waiting for it to finish and print output.",
+# )
+# def run(local_file, no_output):
+#    """
+#    Run a script and print its output.
+#    """
+#    # Run the provided file and print its output.
+#    board_files = files.Files(_board)
+#    try:
+#        output = board_files.run(local_file, not no_output)
+#        if output is not None:
+#            print(output.decode("utf-8"), end="")
+#    except IOError:
+#        click.echo("Failed to find or read input file: {0}".format(local_file), err=True)
+#
 
 if __name__ == "__main__":
     cli()
