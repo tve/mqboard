@@ -353,34 +353,52 @@ async def test_ssl_raw_nonblocking():
         raise
     s.close()
 
-async def test_ssl_default():
+async def test_mqtt_default():
     global pub_q, puback_set, suback_map
     mqc = MQTTProto(got_pub, got_puback, got_suback, got_pingresp)
     #addr = ('192.168.0.14', 8883)
     #addr = socket.getaddrinfo('iot.eclipse.org', 8883)[0][-1]
     addr = socket.getaddrinfo('test.mosquitto.org', 1883)[0][-1]
     # connect with default ssl settings
-    await mqc.connect(addr, cli_id, True, ssl=None)
+    await mqc.connect(addr, cli_id, True)
             #ssl={'server_hostname':'micropython.org'})
     assert mqc.last_ack != 0
     #
     await mqc.disconnect()
 
+#async def test_ssl_default():
+#    # Problem with this test is finding an MQTT server that has a valid cert and allows
+#    # connections with default settings...
+#    global pub_q, puback_set, suback_map
+#    mqc = MQTTProto(got_pub, got_puback, got_suback, got_pingresp)
+#    #addr = ('192.168.0.14', 8883)
+#    # iot.eclipse.org times out
+#    #addr = socket.getaddrinfo('iot.eclipse.org', 8883)[0][-1]
+#    # test.mosquitto.org uses a self-signed cert, so that fails on CPython which checks cert
+#    # validity
+#    #addr = socket.getaddrinfo('test.mosquitto.org', 8883)[0][-1]
+#    # connect with default ssl settings
+#    await mqc.connect(addr, cli_id, True, ssl=True)
+#            #ssl={'server_hostname':'micropython.org'})
+#    assert mqc.last_ack != 0
+#    #
+#    await mqc.disconnect()
+
 if sys.implementation.name == 'micropython':
     loop = asyncio.get_event_loop()
-    test_funs = [ n for n in dir() if n.startswith("test_")]
+    test_funs = sorted( [ n for n in dir() if n.startswith("test_")] )
     print("Running tests explicitly:", test_funs)
     good = 0
     bad  = 0
-    #for test_fun in ['test_ssl_raw_blocking', 'test_ssl_raw_nonblocking', 'test_ssl_default']:
     for test_fun in test_funs:
         print("\n========= {} ==========".format(test_fun))
         try:
             loop.run_until_complete(eval(test_fun+'()'))
             good += 1
+            print("========== Test PASSED")
         except Exception as e:
             sys.print_exception(e)
             bad += 1
-        print("==========")
+            print("========== Test FAILED <===== = = = = = = = = = = = = = = = = = = = =")
 
     print("\n=================== {} passed, {} failed".format(good, bad))
