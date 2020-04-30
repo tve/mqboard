@@ -26,16 +26,16 @@ try:
     import uasyncio as asyncio
     async def open_connection(addr, ssl):
         return ( await asyncio.open_connection(addr[0], addr[1], ssl=ssl) )[0]
-    gc.collect()
+    #gc.collect()
     try:
         from machine import unique_id
-        gc.collect()
+        #gc.collect()
         import network
         STA_IF = network.WLAN(network.STA_IF)
     except:
         # work-arounds on unix micropython
         from unix_fix import *
-    gc.collect()
+    #gc.collect()
     def is_awaitable(f): return f.__class__.__name__ == 'generator'
 except:
     # Imports used with CPython (moved to another file so they don't appear on MP HW)
@@ -44,6 +44,7 @@ except:
 try:
     import logging
     log = logging.getLogger(__name__)
+    #log.setLevel(logging.INFO)
 except:
     class Logger: # please upip.install('logging')
         def debug(self, msg, *args): pass
@@ -229,6 +230,7 @@ class MQTTProto:
             await self._sock.wait_closed()
             raise
         self.last_ack = ticks_ms()
+        #gc.collect()
         log.debug('Connected')  # Got CONNACK
 
     # ===== Helpers
@@ -236,11 +238,11 @@ class MQTTProto:
     # _as_read reads n bytes from the socket in a blocking manner using asyncio and returns them as
     # bytes. On error *and on EOF* it raises an OSError.
     # There is no time-out, instead, as_read relies on the socket being closed by a watchdog.
-    # _as_read buffers a bunch of bytes because calling self.sock._read takes 4-5ms minumum and
+    # _as_read buffers a bunch of bytes because calling self.sock._read takes 4-5ms minimum and
     # _read_msg does a good number of very short reads.
     async def _as_read(self, n):
         # Note: uasyncio.Stream.read returns short reads
-        #t0 = ticks_ms()
+        t0 = ticks_ms()
         while self._sock:
             # read missing amt
             missing = n - len(self._read_buf)
@@ -248,6 +250,8 @@ class MQTTProto:
                 if missing < 128:
                     missing = 128
                 got = await self._sock.read(missing)
+                if got is None:
+                    continue
                 if len(got) == 0:
                     raise OSError(-1, CONN_CLOSED)
                 self._read_buf += got
@@ -256,7 +260,6 @@ class MQTTProto:
             if missing <= 0:
                 res = self._read_buf[:n]
                 self._read_buf = self._read_buf[n:]
-                #print("rd", len(res), "in", ticks_diff(ticks_ms(), t0))
                 return res
         raise OSError(-1, CONN_CLOSED)
     _read_buf = b''
@@ -384,6 +387,7 @@ class MQTTProto:
         res = await self._as_read(1)
         # We got something, dispatch based on message type
         op = res[0]
+        log.debug("read_msg op=%x", op)
         if op == 0xd0:  # PINGRESP
             await self._as_read(1)
             self.last_ack = ticks_ms()
@@ -407,6 +411,7 @@ class MQTTProto:
             topic_len = await self._as_read(2)
             topic_len = (topic_len[0] << 8) | topic_len[1]
             topic = await self._as_read(topic_len)
+            log.debug("topic:%s", topic)
             sz -= topic_len + 2
             retained = op & 0x01
             qos = (op>>1) & 3
@@ -415,6 +420,7 @@ class MQTTProto:
                 pid = await self._as_read(2)
                 pid = pid[0] << 8 | pid[1]
                 sz -= 2
+            log.debug("pid:%s sz=%d", pid, sz)
             if sz < 0:
                 raise OSError(-1, PROTO_ERROR, "pub sz", sz)
             else:
@@ -656,7 +662,7 @@ class MQTTClient():
     # connected proto when _reconnect gets called multiple times for one failure.
     async def _reconnect(self, proto, why, detail="n/a"):
         if self._state == 1 and self._proto == proto:
-            log.debug("dead socket: %s failed (%s)", why, detail)
+            log.info("dead socket: %s failed (%s)", why, detail)
             await self._proto.disconnect() # should this be in a create_task() ?
             self._proto = None
             loop = asyncio.get_event_loop()
