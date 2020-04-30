@@ -18,4 +18,4 @@ if [[ "$out" != *"start-stop OK"*"eval command OK"* ]]; then
 	echo OOPS, got: "$out"
 	exit 1
 fi
-echo 'Success!'
+echo 'SUCCESS!'

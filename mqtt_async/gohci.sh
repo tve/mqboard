@@ -1,5 +1,5 @@
 #! /bin/bash -ex
-PORT=/dev/ttyUSB0
+export PYBOARD_DEVICE=${PYBOARD_DEVICE:-/dev/ttyUSB0}
 export PATH=$HOME/bin:$PATH
 cd $(dirname $0)
 pwd
@@ -8,16 +8,15 @@ echo "----- pytest test_client.py in CPython -----"
 pytest
 
 echo "---- checking pyboard serial ----"
-pyboard.py --device $PORT -c "print('hello world')" || true
+pyboard.py -c "print('hello world')" || true
 
 echo "----- run test_proto on esp32 -----"
-pyboard.py --device $PORT -f cp mqtt_async.py :
-pyboard.py --device $PORT -c 'connect_wifi()'
+pyboard.py -f cp mqtt_async.py :
+pyboard.py -c 'connect_wifi()'
 sleep 1
-timeout 1m pyboard.py --device $PORT test_proto.py
+timeout 1m pyboard.py test_proto.py
 
 #echo "----- run test_bench on esp32 -----"
-#timeout 1m pyboard.py --device $PORT test-bench.py
+#timeout 1m pyboard.py test-bench.py
 
-echo "----- clean-up -----"
-pyboard.py --device $PORT -f rm :mqtt_async.py
+echo 'SUCCESS!'

@@ -1,15 +1,10 @@
-#! /bin/bash -e
+#! /bin/bash
 export PYBOARD_DEVICE=${PYBOARD_DEVICE:-/dev/ttyUSB0}
 export PATH=$HOME/bin:$PATH
 cd $(dirname $0)
 pwd
 
 export MQBOARD_SERVER=192.168.0.14
-if [[ $USER == gohci ]]; then
-    export MQBOARD_TOPIC=esp32/gohci/mqb
-else
-    export MQBOARD_TOPIC=esp32/test/mqb
-fi
 
 echo "---- creating 8KB test file ----"
 TF=/tmp/mqboard-test
@@ -21,8 +16,14 @@ while (( i < 200 )); do
 done
 ls -ls $TF
 
-echo "---- checking pyboard serial ----"
-pyboard.py -c "print('hello world')" || true
+echo "---- installing files ----"
+pyboard.py -f cp ../mqrepl/mqrepl.py ../mqtt_async/mqtt_async.py :
+
+echo "---- fetching topic ----"
+out=$(pyboard.py -c "import mqrepl; print(mqrepl.TOPIC)")
+export MQBOARD_TOPIC=${out%/*}
+echo "topic is <$MQBOARD_TOPIC>"
+[[ -n "$MQBOARD_TOPIC" ]] || exit 1
 
 echo "---- starting mqrepl ----"
 pyboard.py --no-follow -c "import mqrepl; mqrepl.doit()"
@@ -30,12 +31,20 @@ echo done
 
 echo "---- waiting for mqrepl to connect ----"
 echo -n "."
-while true; do
-    out=$(./mqboard --timeout=2 eval '3+4' 2>/dev/null || true)
+for i in 1 2 3 4 5 6; do
+    out=$(./mqboard --timeout=2 eval '3+4' 2>/tmp/gohci-$$)
     [[ "$out" == "7" ]] && break
+    #cat /tmp/gohci-$$
+    if (( i == 6 )); then
+        echo "failed, got: $out"
+        cat /tmp/gohci-$$
+        rm /tmp/gohci-$$
+        exit 1
+    fi
     echo -n "."
     sleep 1
 done
+rm /tmp/gohci-$$
 echo " ready"
 
 echo "---- deleting /test ----"
@@ -54,6 +63,7 @@ def rmdir(dir):
         if e.args[0] != 2:
             print(e)
 '
-./mqboard exec "$RMDIR""rmdir('/test')"
+./mqboard exec "$RMDIR""rmdir('/test')" || exit 1
 
 
+echo 'SUCCESS!'

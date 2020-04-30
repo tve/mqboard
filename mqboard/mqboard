@@ -4,7 +4,6 @@
 
 import os, sys, posixpath, random, base64, logging, struct, time, hashlib
 import click
-import dotenv
 import paho.mqtt.client as paho
 
 logging.basicConfig(level=logging.WARNING)

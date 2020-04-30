@@ -38,8 +38,8 @@ The contents of this repo is:
 
 ## Testing
 
-Everything in this repo is subject to CI testing. Some of it consists of testing python code on
-
+Everything in this repository is subject to CI testing. Some of the tests are run on Linux
+using CPython but the majority are actually executed on an ESP32 using gohci.
 
 ## Getting started
 

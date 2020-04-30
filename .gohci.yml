@@ -3,14 +3,26 @@ workers:
 - name: gohci-u3
   checks:
   - cmd:
-    - /home/gohci/repo-info.sh
-  - cmd:
+    - timeout
+    - 1m
     - ./gohci.sh
   - cmd:
+    - timeout
+    - 1m
     - ./board/gohci.sh
   - cmd:
+    - timeout
+    - 1m
     - ./mqtt_async/gohci.sh
   - cmd:
+    - timeout
+    - 1m
     - ./mqrepl/gohci.sh
   - cmd:
+    - timeout
+    - 1m
+    - ./mqboard/gohci.sh
+  - cmd:
+    - timeout
+    - 1m
     - /home/gohci/repo-save.sh

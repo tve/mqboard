@@ -39,6 +39,11 @@ elif kind == "lolin-d32":
     bat_volt_pin = machine.ADC(machine.Pin(35))
     bat_volt_pin.atten(machine.ADC.ATTN_11DB)
     act_led, fail_led = (led, led)
+elif kind == "esp32thing":
+    # Sparkfun ESP32 Thing
+    lpin = machine.Pin(5, machine.Pin.OUT, None, value=1)
+    led = lambda v: lpin(v)
+    act_led, fail_led = (led, led)
 elif kind == "ezsbc":
     # EzSBC
     lpin = machine.Pin(19, machine.Pin.OUT, None, value=1)
