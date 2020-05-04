@@ -17,7 +17,7 @@ done
 ls -ls $TF
 
 echo "---- installing files ----"
-pyboard.py -f cp ../mqrepl/mqrepl.py ../mqrepl/mqtt.py ../mqtt_async/mqtt_async.py :
+pyboard.py -f cp ../mqrepl/mqrepl.py ../mqtt_async/mqtt_async.py :
 
 echo "---- updating board config ----"
 pyboard.py -c "with open('board_config.py', 'a') as f: f.write('modules=[\"mqrepl\"]\n')"
@@ -30,10 +30,6 @@ if ! echo "$out" | egrep -q "mqrepl: Subscribed"; then
 fi
 export MQBOARD_TOPIC=$(echo "$out" | egrep "mqrepl: Subscribed" | sed -e "s/.*'\(.*\)\/cmd.*/\1/")
 echo "topic is <$MQBOARD_TOPIC>"
-
-#echo "---- starting mqrepl ----"
-#pyboard.py --no-follow -c "import mqrepl; mqrepl.doit()"
-#echo done
 
 echo "---- waiting for mqrepl to connect ----"
 echo -n "."

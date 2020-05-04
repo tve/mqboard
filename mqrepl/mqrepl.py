@@ -12,7 +12,7 @@ import logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
-TOPIC = b"esp32/test/mqb/"
+TOPIC = b"esp32/test/mqb/"  # typ. overridden in MQRepl's constructor
 PKTLEN=1400      # data bytes that reasonably fit into a TCP packet
 BUFLEN=PKTLEN*2  # good number of data bytes to stream files
 BLOCKLEN = const(4096) # data bytes in a flash block

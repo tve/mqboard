@@ -11,7 +11,7 @@ if ! pyboard.py rm_rf.py; then
 fi
 
 echo "----- uploading board files -----"
-pyboard.py -f cp board.py boot.py logging.py main.py :
+pyboard.py -f cp board.py boot.py logging.py main.py mqtt.py :
 board_config=$HOME/board_config_esp32.py
 [ -f $board_config ] || board_config=board_config.py # for local testing
 pyboard.py -f cp $board_config :board_config.py
@@ -40,6 +40,7 @@ if [[ "$out" == *OOPS* || "$out" != *"WDT not started"*"Reset cause: SOFT_RESET"
 fi
 echo "$out" | head -3
 echo "$out" | egrep 'Booting|WDT|Reset cause'
+pyboard.py -f cp mqtt.py :
 
 echo "----- test main -----"
 out=$(pyboard.py test-main.py)

@@ -27,14 +27,22 @@ last two are still on the to-do list.
 
 ## Contents
 
+This repo contains a number of parts that can be used individually, such as the MQTT client
+library. But all the parts of the repo also form a whole that can be
+installed on a board as a micro framework that makes it easy to add/remove functional modules.
+
 The contents of this repo is:
 - `mqtt_async` contains an MQTT client library that uses asyncio, is optimized for streaming files,
-  and forms the backbone of most other libraries and tools here.
+  and forms the backbone of most other libraries and tools here. It is used by other parts of the
+  repo but can easily be used stand-alone.
 - `mqrepl` contains a library to run a REPL via MQTT, basically to be able to send filesystem and
   interactive commands to a MicroPython board via MQTT.
 - `mqboard` contains a python commandline tool to be run on a developer's machine to send commands
   to `mqrepl`.
-- `board` contains sample `boot.py`, `main.py`, etc. files to populate a board for use my `mqrepl`.
+- `board` contains `boot.py` and `main.py` plus associated files to make it easy to add
+  modules to a board.
+- `mqrepl/mqwdt` implements a watchdog timer that periodically pings the `mqrepl` via the MQTT
+  broker to ensure that the board is still functional and can be comandeered remotely.
 
 ## Testing
 
@@ -56,8 +64,23 @@ using CPython but the majority are actually executed on an ESP32 using gohci.
   environment
 - plug your esp32 into USB
 - run `./load.sh` to load all the necessary files
-- try a repl command: `./mqboard/mqboard.py  -s <your_broker> -p 1883/8883 -t test/esp32/mqtest eval
-  '2+3'`
+- try a repl command: `./mqboard/mqboard  -s <your_broker> -p 1883/8883 -t esp32/test/mqb eval
+  '2+3'`:
+
+    DEBUG:mqboard:Connecting to core.voneicken.com:1883
+    DEBUG:mqboard:Connected! Subscribing to esp32/test/mqb/reply/out/_PIFFncP
+    INFO:mqboard:Pub esp32/test/mqb/cmd/eval/_PIFFncP #0 last=1 len=5
+    DEBUG:mqboard:done publishing
+    DEBUG:mqboard:Received reply on topic 'esp32/test/mqb/reply/out/_PIFFncP' with QoS 1
+    5
+    INFO:mqboard:0.006kB in 0.126s -> 0.046kB/s
+
+- tip: if nothing happens, verify which topic the mqrepl subscribes to:
+  - use miniterm.py or equivalent to watch the esp32 console and reset the esp32 (ctrl-t, ctrl-d two
+    times in miniterm)
+  - look for a line like `mqrepl: Subscribed to b'esp32/test/mqb/cmd/#'`, it's typically the last
+    line printed
+  - use the part before `/cmd/` in mqboard's `-t` argument
 
 For help, please post on https://forum.micropython.org 
 
