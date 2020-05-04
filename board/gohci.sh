@@ -22,23 +22,43 @@ if [[ "$out" != *board.py*board_config.py*boot.py*logging.py*main.py* ]]; then
 	exit 1
 fi
 
-echo "----- resetting and connecting to wifi -----"
+echo "----- resetting -----"
 python3 -c "import serial; s=serial.serial_for_url('$PYBOARD_DEVICE'); s.setDTR(0); s.setDTR(1)"
-echo did reset
 sleep 3
-out=$(timeout 1m pyboard.py -c 'connect_wifi()')
-if [[ "$out" != *Connected* ]]; then
+out=$(timeout 1m pyboard.py -c 'print(3+4)')
+if [[ "$out" != *7* ]]; then
 	echo OOPS, got: "$out"
 	exit 1
 fi
+echo did reset
 
-echo "----- check that board variables are set -----"
+echo "----- test boot -----"
+out=$(timeout 6s pyboard.py test-boot.py)
+if [[ "$out" == *OOPS* || "$out" != *"WDT not started"*"Reset cause: SOFT_RESET"* ]]; then
+	echo OOPS, got: "$out"
+	exit 1
+fi
+echo "$out" | head -3
+echo "$out" | egrep 'Booting|WDT|Reset cause'
+
+echo "----- test main -----"
+out=$(pyboard.py test-main.py)
+if [[ "$out" == *OOPS* || \
+    "$out" != *"gc_collect: OK"*"no module named"*"module1 OK"*"module2 OK"*"function takes"* \
+    ]]; then
+	echo OOPS, got: "$out"
+	exit 1
+fi
+echo "$out" | egrep OK
+
+echo "----- test board -----"
 cmd="from board import *; print(len(kind)>2, act_led!=False, fail_led!=False, bat_volt_pin, bat_fct)"
 out=$(pyboard.py -c "$cmd")
 if [[ "$out" != *"True True True None 2"* ]]; then
 	echo OOPS, got: "$out"
 	exit 1
 fi
+echo "$out"
 
 echo "----- turn the LED on for grins -----"
 pyboard.py -c "from board import *; act_led(1)"

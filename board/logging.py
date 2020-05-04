@@ -8,11 +8,11 @@ DEBUG    = 10
 NOTSET   = 0
 
 _level_dict = {
-    CRITICAL: "C",
-    ERROR: "E",
-    WARNING: "W",
-    INFO: "I",
-    DEBUG: "D",
+    CRITICAL: "\033[35;1mC", # magenta bold
+    ERROR: "\033[31;1mE", # red bold
+    WARNING: "\033[33;1mW", # yellow bold
+    INFO: "\033[32mI", # green
+    DEBUG: "\033[2mD", # faint
 }
 
 _stream = sys.stderr
@@ -41,9 +41,10 @@ class Logger:
         if level >= (self.level or _level):
             _stream.write("%s %d %8s: " % (self._level_str(level), t, self.name))
             if not args:
-                print(msg, file=_stream)
+                _stream.write(msg)
             else:
-                print(msg % args, file=_stream)
+                print(msg % args, file=_stream, end='')
+            _stream.write("\033[0m\n")
 
     def debug(self, msg, *args):
         self.log(DEBUG, msg, *args)

@@ -4,25 +4,25 @@ workers:
   checks:
   - cmd:
     - timeout
-    - 1m
+    - 3m
     - ./gohci.sh
   - cmd:
     - timeout
-    - 1m
+    - 3m
     - ./board/gohci.sh
   - cmd:
     - timeout
-    - 1m
+    - 3m
     - ./mqtt_async/gohci.sh
   - cmd:
     - timeout
-    - 1m
+    - 3m
     - ./mqrepl/gohci.sh
   - cmd:
     - timeout
-    - 1m
+    - 3m
     - ./mqboard/gohci.sh
   - cmd:
     - timeout
-    - 1m
+    - 3m
     - /home/gohci/repo-save.sh

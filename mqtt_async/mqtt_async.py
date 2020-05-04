@@ -11,7 +11,7 @@
 # The imports below are a little tricky in order to support operation under Micropython as well as
 # Linux CPython. The latter is used for tests.
 
-VERSION = (0, 8, 0)
+VERSION = (0, 9, 0)
 
 import gc, socket, struct
 from binascii import hexlify
@@ -44,7 +44,7 @@ except:
 try:
     import logging
     log = logging.getLogger(__name__)
-    #log.setLevel(logging.INFO)
+    #log.setLevel(logging.DEBUG)
 except:
     class Logger: # please upip.install('logging')
         def debug(self, msg, *args): pass
@@ -582,6 +582,13 @@ class MQTTClient():
             await self._proto.disconnect() # should we do a create_task here?
         self._proto = None
 
+    # start the connection process without blocking
+    def start(self):
+        if self._state > 0:
+            raise ValueError("cannot reuse")
+        loop = asyncio.get_event_loop()
+        self._conn_keeper = loop.create_task(self._keep_connected())
+
     #===== Manage PIDs and ACKs
     # self._unacked_pids is a hash that contains unacked pids. Each hash value is a list, the first
     # element of which is an asycio.Event that gets set when an ack comes in. The second element is
@@ -677,7 +684,7 @@ class MQTTClient():
     # - check whether first connection after wifi reconnect has to be delayed
     # - as an additional step, try to re-resolve dns
     async def _keep_connected(self):
-        while self._state == 1:
+        while self._state <= 1:
             if self._proto is not None:
                 # We're connected, pause for 1 second
                 await asyncio.sleep(_CONN_DELAY)

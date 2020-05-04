@@ -27,3 +27,20 @@ mqtt_config = {
 
 # minimal mqtt_config:
 # mqtt_config = { "server": "mqtt.local" }
+
+# SNTP config
+sntp_config = {
+    "host"   : "pool.ntp.org",
+    "zone"   : "PST+8PDT,M3.2.0/2,M11.1.0/2",
+}
+
+# MQRepl config
+mqrepl_config = {
+    # prefix before '/mqb/cmd/...', '/mwb/reply/...', etc.
+    "prefix" : mqtt_config.get("user", b"esp32/" + location),
+}
+
+# Modules to load and call start on. For module foo, if this file defines foo_config then
+# foo.start(mqtt, foo_config) is called, else foo.start(mqtt). If there is no foo.start() then
+# that's OK too.
+modules = [ "mqrepl", "mqwdt", "sntp" ]
