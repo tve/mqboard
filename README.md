@@ -28,7 +28,7 @@ last two are still on the to-do list.
 ## Contents
 
 This repo contains a number of parts that can be used individually, such as the MQTT client
-library. But all the parts of the repo also form a whole that can be
+library or the MQTT Repl. But all the parts of the repo also form a whole that can be
 installed on a board as a micro framework that makes it easy to add/remove functional modules.
 
 The contents of this repo is:
@@ -66,7 +66,7 @@ using CPython but the majority are actually executed on an ESP32 using gohci.
 - run `./load.sh` to load all the necessary files
 - try a repl command: `./mqboard/mqboard  -s <your_broker> -p 1883/8883 -t esp32/test/mqb eval
   '2+3'`:
-
+```
     DEBUG:mqboard:Connecting to core.voneicken.com:1883
     DEBUG:mqboard:Connected! Subscribing to esp32/test/mqb/reply/out/_PIFFncP
     INFO:mqboard:Pub esp32/test/mqb/cmd/eval/_PIFFncP #0 last=1 len=5
@@ -74,7 +74,9 @@ using CPython but the majority are actually executed on an ESP32 using gohci.
     DEBUG:mqboard:Received reply on topic 'esp32/test/mqb/reply/out/_PIFFncP' with QoS 1
     5
     INFO:mqboard:0.006kB in 0.126s -> 0.046kB/s
-
+```
+  (The eval result is the line with the "5", mqboard needs to turn those debug log statement off
+  by default...)
 - tip: if nothing happens, verify which topic the mqrepl subscribes to:
   - use miniterm.py or equivalent to watch the esp32 console and reset the esp32 (ctrl-t, ctrl-d two
     times in miniterm)
