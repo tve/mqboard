@@ -16,9 +16,6 @@ while (( i < 200 )); do
 done
 ls -ls $TF
 
-echo "---- installing files ----"
-pyboard.py -f cp ../mqrepl/mqrepl.py ../mqtt_async/mqtt_async.py :
-
 echo "---- updating board config ----"
 pyboard.py -c "with open('board_config.py', 'a') as f: f.write('modules=[\"mqrepl\"]\n')"
 
