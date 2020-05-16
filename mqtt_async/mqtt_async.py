@@ -413,7 +413,8 @@ class MQTTProto:
             topic = await self._as_read(topic_len)
             log.debug("topic:%s", topic)
             sz -= topic_len + 2
-            retained = op & 0x01
+            retained = op & 0x1
+            dup = op & 0x8
             qos = (op>>1) & 3
             pid = None
             if qos: # not QoS=0 -> got pid
@@ -428,7 +429,7 @@ class MQTTProto:
             # Dispatch to user's callback handler
             log.debug("dispatch pub %s pid=%s qos=%d", topic, pid, qos)
             #t1 = ticks_ms()
-            cb = self._subs_cb(topic, msg, bool(retained), qos)
+            cb = self._subs_cb(topic, msg, bool(retained), qos, dup)
             if is_awaitable(cb):
                 await cb # handle _subs_cb being coro
             #t2 = ticks_ms()
