@@ -8,7 +8,7 @@ import paho.mqtt.client as paho
 
 logging.basicConfig(level=logging.WARNING)
 log = logging.getLogger("mqboard")
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 BUFLEN = 2800  # "optimal" buffer size to make mqtt message fit into TCP segment
 
@@ -130,7 +130,7 @@ def print_msg(msg, seq, last):
     envvar="MQBOARD_SERVER",
     required=False,
     default="localhost",
-    help="MQTT server hostname or IP address, default localhost or MQBOARD_PORT env var.",
+    help="MQTT server hostname or IP address, default localhost or MQBOARD_SERVER env var.",
     metavar="SERVER",
 )
 @click.option(
@@ -147,7 +147,7 @@ def print_msg(msg, seq, last):
     envvar="MQBOARD_TLS",
     required=False,
     default=False,
-    help="enable TLS, default false or MQBOARD_TLS env var. --tls is implied if --psk is used.",
+    help="enable TLS, default false or MQBOARD_TLS env var.",
     metavar="PSK",
 )
 @click.option(
@@ -156,7 +156,7 @@ def print_msg(msg, seq, last):
     envvar="MQBOARD_TIMEOUT",
     required=False,
     default="60",
-    help="Timeout when waiting for a reply",
+    help="Timeout when waiting for a reply, default 60 or MQBOARD_TIMEOUT env var.",
     metavar="TIMEOUT",
 )
 @click.option(
@@ -165,7 +165,7 @@ def print_msg(msg, seq, last):
     envvar="MQBOARD_TOPIC",
     required=True,
     type=click.STRING,
-    help="MQTT topic prefix (just before 'cmd')",
+    help="MQTT topic prefix (just before '/mqb/cmd'), default None or MQBOARD_TOPIC env var.",
     metavar="TOPIC",
 )
 @click.version_option()
@@ -222,6 +222,24 @@ def exec(statement):
     """Exec Python statement(s) on the board and return the console output.
     """
     perform(_mqclient, _mqclient._userdata, "cmd/exec", statement, print_msg)
+
+
+# ========== reset ==========
+@cli.command()
+def reset():
+    """Reset the board
+    """
+    cmd = (
+        "import uasyncio, machine, logging\n"
+        "async def do_reset():\n"
+        "    log.critical('Resetting via mqboard')\n"
+        "    if 'safemode' in sys.modules:\n"
+        "        sys.modules['safemode'].safe_ok()\n"
+        "    await uasyncio.sleep_ms(600)\n"
+        "    machine.reset()\n"
+        "uasyncio.Loop.create_task(do_reset())\n"
+    )
+    perform(_mqclient, _mqclient._userdata, "cmd/exec", cmd, print_msg)
 
 
 # ========== get ==========
@@ -283,43 +301,21 @@ def ls(directory, long_format, recursive):
 def put(local, remote):
     """Put a file or folder and its contents on the board.
     """
-    # Use the local filename if no remote filename is provided.
     if remote is None:
+        # Use the local filename if no remote filename is provided.
         remote = os.path.basename(os.path.abspath(local))
-    # Check if path is a folder and do recursive copy of everything inside it.
-    # Otherwise it's a file and should simply be copied over.
-    if os.path.isdir(local):
-        print("Recursive put is not yet supported")
-        sys.exit(1)
-        # Directory copy, create the directory and walk all children to copy
-        # over the files.
-        board_files = files.Files(_board)
-        for parent, child_dirs, child_files in os.walk(local):
-            # Create board filesystem absolute path to parent directory.
-            remote_parent = posixpath.normpath(
-                posixpath.join(remote, os.path.relpath(parent, local))
-            )
-            try:
-                # Create remote parent directory.
-                board_files.mkdir(remote_parent)
-            except files.DirectoryExistsError:
-                # Ignore errors for directories that already exist.
-                pass
-            # Loop through all the files and put them on the board too.
-            for filename in child_files:
-                with open(os.path.join(parent, filename), "rb") as infile:
-                    remote_filename = posixpath.join(remote_parent, filename)
-                    board_files.put(remote_filename, infile.read())
+    elif remote.endswith('/'):
+        # If remote ends in / it's a directory and we should append local filename
+        remote += local[local.rfind('/')+1:]
+        print("remote:", remote)
 
-    else:
-        # File copy, open the file and copy its contents to the board.
-        def on_msg(msg, seq, last):
-            pass
+    def on_msg(msg, seq, last):
+        pass
 
-        # Put the file on the board.
-        with open(local, "rb") as infile:
-            contents = infile.read()
-            perform(_mqclient, _mqclient._userdata, "cmd/put", contents, on_msg, tail=remote)
+    # Put the file on the board.
+    with open(local, "rb") as infile:
+        contents = infile.read()
+        perform(_mqclient, _mqclient._userdata, "cmd/put", contents, on_msg, tail=remote)
 
 
 # ========== ota ==========
