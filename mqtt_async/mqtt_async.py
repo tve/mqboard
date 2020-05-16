@@ -625,10 +625,15 @@ class MQTTClient():
                 await asyncio.wait_for(self._unacked_pids[pid][0].wait(), self._c["response_time"])
         except asyncio.TimeoutError:
             raise OSError(-1, CONN_TIMEOUT)
-        # return second list element
-        ret = self._unacked_pids[pid][1]
-        del self._unacked_pids[pid]
-        return ret
+        # return second list element -- there is a race condition in that multiple coros may be
+        # waiting here, but only the first will get the return value; that's OK because only
+        # subscribe actually needs the value and it doesn't have a race condition
+        if pid in self._unacked_pids:
+            ret = self._unacked_pids[pid][1]
+            del self._unacked_pids[pid]
+            return ret
+        else:
+            return None
 
     #===== Background coroutines
 
