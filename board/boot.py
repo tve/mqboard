@@ -6,32 +6,49 @@ gc.threshold(4096)
 import sys
 sys.path.append("/src")
 
+try:
+    from board import connect_wifi
+except ImportError:
+    pass
+
+# if board config defines boot_log then init logging to buffer the boot messages
+import logging
+try:
+    from board import logging_config
+    mqtt_logger = logging.MQTTLog(
+        minlevel=logging_config.get("boot_level", logging.INFO),
+        maxsize=logging_config.get("boot_sz", 2880),
+    )
+except ImportError:
+    pass
+log = logging.getLogger("main")
+
 from esp32 import Partition as p
-print("Booting partition", p(p.RUNNING).info()[4])
+log.info("Booting partition %s", p(p.RUNNING).info()[4])
+del p
 
-from board import connect_wifi
-
-# if board config defines wdt_timeout then init the WDT right here so it starts as early
+# if board config defines watchdog_timeout then init the WDT right here so it starts as early
 # as possible and can watch over the rest of the initialization process
 try:
-    from board import wdt_timeout
-    if wdt_timeout > 0:
+    from board import watchdog_timeout
+    if watchdog_timeout > 0:
         try:
-            import mqwdt
-            mqwdt.init(board.wdt_timeout)
+            import watchdog
+
+            watchdog.init(watchdog_timeout)
         except Exception as e:
-            print("Failed to start WDT:")
-            sys.print_exception(e)
+            log.exc(e, "Failed to start WDT due to:")
 except ImportError:
-    print("WDT not started")
+    log.info("WDT not started")
 
 # print reset cause in text form by reversing reset cause constants (yuck!)
 import machine
 cnum = machine.reset_cause()
 for n in dir(machine):
     if n.endswith("_RESET") and getattr(machine, n) == cnum:
-        print("Reset cause:", n)
+        log.info("Reset cause: %s", n)
         break
 else:
-    print("Reset cause:", cnum)
+    log.info("Reset cause: %s", cnum)
 del cnum
+del n

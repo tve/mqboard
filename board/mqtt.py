@@ -65,22 +65,18 @@ class MQTT:
         act_led(False)
 
     @classmethod
-    def _msg_handler(cls, topic, msg, retained, qos):
+    def _msg_handler(cls, topic, msg, retained, qos, dup):
         log.debug("RX %s (->%d): %s", topic, len(cls._msg_cb), msg)
         loop.create_task(cls._pulse_act())
         for cb in cls._msg_cb:
-            cb(topic, msg, retained, qos)
+            cb(topic, msg, retained, qos, dup)
 
-    @classmethod
-    def start(cls, clean):
-        from mqtt_async import MQTTClient
-
-        log.debug("debug logging enabled")
-
-        config["subs_cb"] = cls._msg_handler
-        config["wifi_coro"] = cls._wifi_handler
-        config["connect_coro"] = cls._connect_handler
-        config["clean"] = clean
-        fail_led(True)
-        cls.client = MQTTClient(config)
-        cls.client.start()
+def start(cls, conf={}):
+    from mqtt_async import MQTTClient
+    config["subs_cb"] = cls._msg_handler
+    config["wifi_coro"] = cls._wifi_handler
+    config["connect_coro"] = cls._connect_handler
+    config["clean"] = conf.get("clean", False)
+    fail_led(True)
+    cls.client = MQTTClient(config)
+    cls.client.start()

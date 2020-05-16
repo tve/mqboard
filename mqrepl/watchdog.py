@@ -2,8 +2,8 @@ import machine, logging, time, uasyncio as asyncio
 
 log = logging.getLogger(__name__)
 
-topic = b"cmd/exec/0F00D/"
-msg = b'\x80\x00import mqwdt; mqwdt.wdt.feed()'
+topic = "cmd/exec/0F00D/"
+msg = b"\x80\x00import watchdog; watchdog.wdt.feed()"
 
 
 async def feeder(mqclient):
@@ -14,7 +14,7 @@ async def feeder(mqclient):
             await mqclient.publish(topic, msg, qos=1)
             await asyncio.sleep(timeout / 4)
         except Exception as e:
-            log.warning("%s in wdt task", e)
+            log.exc(e, "In feeder:")
 
 
 async def connected(mqclient):
@@ -25,6 +25,7 @@ async def connected(mqclient):
 def start(mqtt):
     global topic
     import mqrepl
+
     topic = mqrepl.TOPIC + topic
     asyncio.Loop.create_task(feeder(mqtt.client))
     mqtt.on_connect(connected)

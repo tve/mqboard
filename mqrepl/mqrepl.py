@@ -10,9 +10,9 @@ import uhashlib as hashlib
 import ubinascii as binascii
 import logging
 log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+#log.setLevel(logging.DEBUG)
 
-TOPIC = b"esp32/test/mqb/"  # typ. overridden in MQRepl's constructor
+TOPIC = "esp32/test/mqb/"  # typ. overridden in MQRepl's constructor
 PKTLEN=1400      # data bytes that reasonably fit into a TCP packet
 BUFLEN=PKTLEN*2  # good number of data bytes to stream files
 BLOCKLEN = const(4096) # data bytes in a flash block
@@ -81,7 +81,7 @@ class OTA:
             raise ValueError("SHA mismatch calc:{} check={}".format(calc_sha, check_sha))
         print("set_boot")
         self.part.set_boot()
-        return b'OK'
+        return 'OK'
 
 # Stream interface to pass to dupterm. It is used to collect output from the repl, or
 # more precisely, from sys.stdout  It does not feed any input to the repl because that's pointless
@@ -115,7 +115,7 @@ class ReplStream(io.IOBase):
                         self.tx_buf = bytearray(PKTLEN)
                     await pub(tx)
                 #else:
-                #    await pub(b"Nothing...\n")
+                #    await pub("Nothing...\n")
                 # wait for event so we send more
                 await self.ev.wait()
                 self.ev.clear()
@@ -128,7 +128,7 @@ class ReplStream(io.IOBase):
             await asyncio.sleep_ms(100)
 
     def write(self, buf):
-        #if buf[:5] == b"TADA:": return
+        #if buf[:5] == "TADA:": return
         #print("TADA: {}\n".format(str(buf, "utf-8")), end='')
         tx_len = self.tx_len
         lb = len(buf)
@@ -158,21 +158,22 @@ class MQRepl:
         self._put_fd = None
         self._put_seq = None
         self._repl_task = None
-        self.CMDS = { b'eval': self._do_eval, b'exec': self._do_exec, b'get': self._do_get,
-                b'put': self._do_put, b'ota': self._do_ota }
+        self._ndup = False # set true when 1st non-dup msg is received
+        self.CMDS = { 'eval': self._do_eval, 'exec': self._do_exec, 'get': self._do_get,
+                'put': self._do_put, 'ota': self._do_ota }
         if config:
-            TOPIC = config["prefix"] + b"/mqb/"
-        TOPIC_CMD = TOPIC + b"cmd/"
+            TOPIC = config["prefix"] + "/mqb/"
+        TOPIC_CMD = TOPIC + "cmd/"
         self.mqclient = mqtt.client
         mqtt.on_connect(self.start)
         mqtt.on_msg(self._msg_cb)
 
     async def _ttypub(self, buf):
         if self.mqclient:
-            await self.mqclient.publish(TOPIC+b"ttyout", buf, qos=1, sync=False)
+            await self.mqclient.publish(TOPIC+"ttyout", buf, qos=1, sync=False)
 
     async def start(self, client):
-        topic = TOPIC+b"cmd/#"
+        topic = TOPIC+"cmd/#"
         await client.subscribe(topic, qos=1)
         log.info("Subscribed to %s", topic)
         # capture stdout
@@ -245,7 +246,7 @@ class MQRepl:
             self._put_fd.close()
             self._put_fd = None
             self._put_seq = None
-            return b"OK"
+            return "OK"
         return None
 
     # do_ota uploads a new firmware over-the-air and activates it for the next boot
@@ -285,17 +286,22 @@ class MQRepl:
     # handle the arrival of an MQTT message
     # The first two bytes of each message contain a binary (big endian) sequence number with the top
     # bit set for the last message in the sequence.
-    def _msg_cb(self, topic, msg, retained, qos):
-        #topic = str(topic, 'utf-8')
+    def _msg_cb(self, topic, msg, retained, qos, dup):
+        topic = str(topic, 'utf-8')
         #log.info("MQTT: %s", topic)
         if topic.startswith(TOPIC_CMD) and len(msg) >= 2:
+            if dup and not self._ndup:
+                # skip inital dup msg: they may be unacked 'cause they may have crashed us
+                return
+            else:
+                self._ndup = True
             # expect topic: TOPIC/cmd/<cmd>/<id>[/<filename>]
-            topic = topic[len(TOPIC_CMD):].split(b"/", 2)
+            topic = topic[len(TOPIC_CMD):].split("/", 2)
             if len(topic) < 2: return
             cmd, ident, *name = topic
             name = name[0] if len(name) else None
-            rtopic = TOPIC + b"reply/out/" + ident
-            errtopic = TOPIC + b"reply/err/" + ident
+            rtopic = TOPIC + "reply/out/" + ident
+            errtopic = TOPIC + "reply/err/" + ident
             # parse message header (first two bytes)
             seq = ((msg[0] & 0x7f) << 8) | msg[1]
             last = (msg[0] & 0x80) != 0
@@ -303,8 +309,8 @@ class MQRepl:
             try:
                 fun = self.CMDS[cmd]
                 dt = time.ticks_diff(time.ticks_ms(), self.tl)
-                log.info("dispatch: fun={}, msglen={} seq={} last={} id={} dt={}".format(fun.__name__,
-                    len(msg), seq, last, ident, dt))
+                log.info("dispatch: fun={}, msglen={} seq={} last={} id={} dup={} dt={}".format(fun.__name__,
+                    len(msg), seq, last, ident, dup, dt))
                 try:
                     t0 = time.ticks_ms()
                     resp = fun(name, msg, seq, last)
@@ -328,10 +334,10 @@ class MQRepl:
                     micropython.mem_info()
                     Loop.create_task(self.mqclient.publish(errtopic, errbuf, qos=1))
             except KeyError:
-                Loop.create_task(self.mqclient.publish(errtopic, b"Command '" + cmd + b"' not supported", qos=1))
+                Loop.create_task(self.mqclient.publish(errtopic, "Command '" + cmd + "' not supported", qos=1))
 
-def start(mqtt):
-    mqr = MQRepl(mqtt)
+def start(mqtt, config):
+    mqr = MQRepl(mqtt, config)
 
 #def doit():
 #    mqr = MQRepl(config)
