@@ -304,9 +304,9 @@ def put(local, remote):
     if remote is None:
         # Use the local filename if no remote filename is provided.
         remote = os.path.basename(os.path.abspath(local))
-    elif remote.endswith('/'):
+    elif remote.endswith("/"):
         # If remote ends in / it's a directory and we should append local filename
-        remote += local[local.rfind('/')+1:]
+        remote += local[local.rfind("/") + 1 :]
         print("remote:", remote)
 
     def on_msg(msg, seq, last):

@@ -20,7 +20,7 @@ from board_config import *
 
 led = False
 bat_volt_pin = None
-bat_fct = 2 # voltage divider factor
+bat_fct = 2  # voltage divider factor
 
 if kind == "tve-bare":
     # bare esp32-wroom module with LED across IO23 and gnd
@@ -50,22 +50,27 @@ elif kind == "ezsbc":
     blue_led = lambda v: lpin(not v)
     lpin = machine.Pin(16, machine.Pin.OUT, None, value=1)
     red_led = lambda v: lpin(not v)
-    #bat_volt_pin = machine.ADC(machine.Pin(35))
-    #bat_volt_pin.atten(machine.ADC.ATTN_11DB)
+    # bat_volt_pin = machine.ADC(machine.Pin(35))
+    # bat_volt_pin.atten(machine.ADC.ATTN_11DB)
     act_led, fail_led = (blue_led, red_led)
-elif kind == 'tinypico':
+elif kind == "tinypico":
     # TinyPICO has an RGB LED so we use the red channel for WiFi and the blue
     # channel for message rx
     from led import dotstar
+
     color = [255, 0, 0]
+
     def set_red(v):
         color[0] = 255 if v else 0
         dotstar[0] = color
+
     def set_blue(v):
         color[2] = 255 if v else 0
         dotstar[0] = color
+
     fail_led = set_red
     act_led = set_blue
+
 
 def get_battery_voltage():
     """
@@ -75,14 +80,16 @@ def get_battery_voltage():
     if bat_volt_pin == None:
         return 0
     measuredvbat = bat_volt_pin.read() / 4095
-    measuredvbat *= 3.6*bat_fct # 3.6V at full scale
+    measuredvbat *= 3.6 * bat_fct  # 3.6V at full scale
     return measuredvbat
+
 
 # ===== MQTT stuff
 # merge board-specific mqtt config into default config
 # in the app use `mqtt_async.MQTTClient(mqtt_async.config)`
 try:
     from mqtt_async import config
+
     config.update(mqtt_config)
 except Exception:
     pass
@@ -91,16 +98,17 @@ except Exception:
 # connect_wifi is a handy little function to manually connect wifi
 def connect_wifi():
     import network
+
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
-    print('Connecting to', wifi_ssid, '...')
+    print("Connecting to", wifi_ssid, "...")
     wlan.connect(wifi_ssid, wifi_pass)
     while not wlan.isconnected():
         pass
-    print('Connected!')
+    print("Connected!")
 
 
-#if platform == 'pyboard':
+# if platform == 'pyboard':
 #    from pyb import LED
 #    def ledfunc(led, init):
 #        led = led

@@ -6,10 +6,10 @@ from board import config, act_led, fail_led
 import logging
 
 log = logging.getLogger(__name__)
-#log.setLevel(logging.DEBUG)
+# log.setLevel(logging.DEBUG)
 
 
-#def is_awaitable(f):
+# def is_awaitable(f):
 #    return f.__class__.__name__ == "generator"
 
 
@@ -71,8 +71,10 @@ class MQTT:
         for cb in cls._msg_cb:
             cb(topic, msg, retained, qos, dup)
 
+
 def start(cls, conf={}):
     from mqtt_async import MQTTClient
+
     config["subs_cb"] = cls._msg_handler
     config["wifi_coro"] = cls._wifi_handler
     config["connect_coro"] = cls._connect_handler

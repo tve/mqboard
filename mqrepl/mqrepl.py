@@ -9,13 +9,14 @@ from uasyncio import Loop
 import uhashlib as hashlib
 import ubinascii as binascii
 import logging
+
 log = logging.getLogger(__name__)
-#log.setLevel(logging.DEBUG)
+# log.setLevel(logging.DEBUG)
 
 TOPIC = "esp32/test/mqb/"  # typ. overridden in MQRepl's constructor
-PKTLEN=1400      # data bytes that reasonably fit into a TCP packet
-BUFLEN=PKTLEN*2  # good number of data bytes to stream files
-BLOCKLEN = const(4096) # data bytes in a flash block
+PKTLEN = 1400  # data bytes that reasonably fit into a TCP packet
+BUFLEN = PKTLEN * 2  # good number of data bytes to stream files
+BLOCKLEN = const(4096)  # data bytes in a flash block
 ERR_SINGLEMSG = "only single message supported"
 
 # OTA manages a MicroPython firmware update over-the-air.
@@ -50,7 +51,7 @@ class OTA:
         if self.buflen + msglen >= BLOCKLEN:
             # got a full block, assemble it and write to flash
             cpylen = BLOCKLEN - self.buflen
-            self.buf[self.buflen:BLOCKLEN] = msg[:cpylen]
+            self.buf[self.buflen : BLOCKLEN] = msg[:cpylen]
             self.part.writeblocks(self.block, self.buf)
             self.block += 1
             msglen -= cpylen
@@ -58,18 +59,18 @@ class OTA:
                 self.buf[:msglen] = msg[cpylen:]
             self.buflen = msglen
         else:
-            self.buf[self.buflen:self.buflen+msglen] = msg
+            self.buf[self.buflen : self.buflen + msglen] = msg
             self.buflen += msglen
             if last and self.buflen > 0:
-                for i in range(BLOCKLEN-self.buflen):
-                    self.buf[self.buflen+i] = 0xff # erased flash is ff
+                for i in range(BLOCKLEN - self.buflen):
+                    self.buf[self.buflen + i] = 0xFF  # erased flash is ff
                 self.part.writeblocks(self.block, self.buf)
                 self.block += 1
         assert len(self.buf) == BLOCKLEN
         if last:
             return self.finish(sha)
-        elif (seq&7) == 0:
-            #print("Sending ACK {}".format(seq))
+        elif (seq & 7) == 0:
+            # print("Sending ACK {}".format(seq))
             return "SEQ {}".format(seq).encode()
 
     def finish(self, check_sha):
@@ -81,7 +82,8 @@ class OTA:
             raise ValueError("SHA mismatch calc:{} check={}".format(calc_sha, check_sha))
         print("set_boot")
         self.part.set_boot()
-        return 'OK'
+        return "OK"
+
 
 # Stream interface to pass to dupterm. It is used to collect output from the repl, or
 # more precisely, from sys.stdout  It does not feed any input to the repl because that's pointless
@@ -95,9 +97,14 @@ class ReplStream(io.IOBase):
         self.tx_len = 0
         self.ev = asyncio.Event()
 
-    def read(self, sz=None): return None
-    def readinto(self, buf): return None
-    def ioctl(self, op, arg): return 0
+    def read(self, sz=None):
+        return None
+
+    def readinto(self, buf):
+        return None
+
+    def ioctl(self, op, arg):
+        return 0
 
     # sender should be started as a background task so it can tick away and
     # publish buffered data. It deliberately sleeps for 100ms and delays sending stuff so
@@ -109,12 +116,12 @@ class ReplStream(io.IOBase):
             try:
                 # publish what we've got
                 if self.tx_len > 0:
-                    tx = self.tx_buf[:self.tx_len]
+                    tx = self.tx_buf[: self.tx_len]
                     self.tx_len = 0
                     if len(self.tx_buf) > PKTLEN:
                         self.tx_buf = bytearray(PKTLEN)
                     await pub(tx)
-                #else:
+                # else:
                 #    await pub("Nothing...\n")
                 # wait for event so we send more
                 await self.ev.wait()
@@ -128,13 +135,13 @@ class ReplStream(io.IOBase):
             await asyncio.sleep_ms(100)
 
     def write(self, buf):
-        #if buf[:5] == "TADA:": return
-        #print("TADA: {}\n".format(str(buf, "utf-8")), end='')
+        # if buf[:5] == "TADA:": return
+        # print("TADA: {}\n".format(str(buf, "utf-8")), end='')
         tx_len = self.tx_len
         lb = len(buf)
-        if lb <= PKTLEN-tx_len:
+        if lb <= PKTLEN - tx_len:
             # buf fits into tx_buf: copy it
-            self.tx_buf[tx_len:tx_len+lb] = buf
+            self.tx_buf[tx_len : tx_len + lb] = buf
             tx_len += lb
         elif lb < PKTLEN:
             # buf doesn't fit and is less than total buffer: shift over
@@ -146,10 +153,11 @@ class ReplStream(io.IOBase):
             self.tx_buf = buf[-PKTLEN:]
             tx_len = PKTLEN
         # if buf is more than 3/4 packet, trigger a send
-        if tx_len > PKTLEN*3//4:
+        if tx_len > PKTLEN * 3 // 4:
             self.ev.set()
         self.tx_len = tx_len
         return lb
+
 
 class MQRepl:
     def __init__(self, mqtt, config=None):
@@ -158,9 +166,14 @@ class MQRepl:
         self._put_fd = None
         self._put_seq = None
         self._repl_task = None
-        self._ndup = False # set true when 1st non-dup msg is received
-        self.CMDS = { 'eval': self._do_eval, 'exec': self._do_exec, 'get': self._do_get,
-                'put': self._do_put, 'ota': self._do_ota }
+        self._ndup = False  # set true when 1st non-dup msg is received
+        self.CMDS = {
+            "eval": self._do_eval,
+            "exec": self._do_exec,
+            "get": self._do_get,
+            "put": self._do_put,
+            "ota": self._do_ota,
+        }
         if config:
             TOPIC = config["prefix"] + "/mqb/"
         TOPIC_CMD = TOPIC + "cmd/"
@@ -170,14 +183,14 @@ class MQRepl:
 
     async def _ttypub(self, buf):
         if self.mqclient:
-            await self.mqclient.publish(TOPIC+"ttyout", buf, qos=1, sync=False)
+            await self.mqclient.publish(TOPIC + "ttyout", buf, qos=1, sync=False)
 
     async def start(self, client):
-        topic = TOPIC+"cmd/#"
+        topic = TOPIC + "cmd/#"
         await client.subscribe(topic, qos=1)
         log.info("Subscribed to %s", topic)
         # capture stdout
-        #if not self._repl_task:
+        # if not self._repl_task:
         #    ttyout = ReplStream()
         #    self._repl_task = Loop.create_task(ttyout.sender(self._ttypub))
         #    os.dupterm(ttyout)
@@ -196,7 +209,7 @@ class MQRepl:
     def _do_eval(self, fname, cmd, seq, last):
         if seq != 0 or not last:
             raise ValueError(ERR_SINGLEMSG)
-        cmd = str(cmd, 'utf-8')
+        cmd = str(cmd, "utf-8")
         log.debug("eval %s", cmd)
         op = compile(cmd, "<eval>", "eval")
         result = eval(op, globals(), None)
@@ -207,14 +220,14 @@ class MQRepl:
     def _do_exec(self, fname, cmd, seq, last):
         if seq != 0 or not last:
             raise ValueError(ERR_SINGLEMSG)
-        cmd = str(cmd, 'utf-8')
+        cmd = str(cmd, "utf-8")
         log.debug("exec %s", cmd)
         outbuf = io.BytesIO(BUFLEN)
         old_term = os.dupterm(outbuf)
         try:
             op = compile(cmd, "<exec>", "exec")
             eval(op, globals(), None)
-            time.sleep_ms(5) # necessary to capture all output?
+            time.sleep_ms(5)  # necessary to capture all output?
             return outbuf.getvalue()
         finally:
             os.dupterm(old_term)
@@ -224,14 +237,15 @@ class MQRepl:
         if seq != 0 or not last:
             raise ValueError(ERR_SINGLEMSG)
         log.debug("opening {}".format(fname))
-        return open(fname, 'rb')
+        return open(fname, "rb")
 
     # do_put opens the file fname for writing and appends the message content to it.
     def _do_put(self, fname, msg, seq, last):
         if seq == 0:
-            if self._put_fd != None: self._put_fd.close()
-            self._put_fd = open(fname, 'wb')
-            self._put_seq = 1 # next seq expected
+            if self._put_fd != None:
+                self._put_fd.close()
+            self._put_fd = open(fname, "wb")
+            self._put_seq = 1  # next seq expected
         elif self._put_seq is None:
             raise ValueError("missing first message")
         elif seq < self._put_seq:
@@ -263,13 +277,13 @@ class MQRepl:
     # Helpers
 
     async def _send_stream(self, topic, stream):
-        buf = bytearray(BUFLEN+2)
+        buf = bytearray(BUFLEN + 2)
         buf[2:] = stream.read(BUFLEN)
         seq = 0
         last = 0
         while True:
             last = len(buf) == 2
-            struct.pack_into("!H", buf, 0, last<<15 | seq)
+            struct.pack_into("!H", buf, 0, last << 15 | seq)
             log.debug("pub {} -> {}".format(len(buf), topic))
             await self.mqclient.publish(topic, buf, qos=1, sync=last)
             if last:
@@ -277,7 +291,6 @@ class MQRepl:
                 return None
             buf[2:] = stream.read(BUFLEN)
             seq += 1
-
 
     # mqtt_async callback handlers
 
@@ -287,8 +300,8 @@ class MQRepl:
     # The first two bytes of each message contain a binary (big endian) sequence number with the top
     # bit set for the last message in the sequence.
     def _msg_cb(self, topic, msg, retained, qos, dup):
-        topic = str(topic, 'utf-8')
-        #log.info("MQTT: %s", topic)
+        topic = str(topic, "utf-8")
+        # log.info("MQTT: %s", topic)
         if topic.startswith(TOPIC_CMD) and len(msg) >= 2:
             if dup and not self._ndup:
                 # skip inital dup msg: they may be unacked 'cause they may have crashed us
@@ -296,21 +309,25 @@ class MQRepl:
             else:
                 self._ndup = True
             # expect topic: TOPIC/cmd/<cmd>/<id>[/<filename>]
-            topic = topic[len(TOPIC_CMD):].split("/", 2)
-            if len(topic) < 2: return
+            topic = topic[len(TOPIC_CMD) :].split("/", 2)
+            if len(topic) < 2:
+                return
             cmd, ident, *name = topic
             name = name[0] if len(name) else None
             rtopic = TOPIC + "reply/out/" + ident
             errtopic = TOPIC + "reply/err/" + ident
             # parse message header (first two bytes)
-            seq = ((msg[0] & 0x7f) << 8) | msg[1]
+            seq = ((msg[0] & 0x7F) << 8) | msg[1]
             last = (msg[0] & 0x80) != 0
             msg = memoryview(msg)[2:]
             try:
                 fun = self.CMDS[cmd]
                 dt = time.ticks_diff(time.ticks_ms(), self.tl)
-                log.info("dispatch: fun={}, msglen={} seq={} last={} id={} dup={} dt={}".format(fun.__name__,
-                    len(msg), seq, last, ident, dup, dt))
+                log.info(
+                    "dispatch: fun={}, msglen={} seq={} last={} id={} dup={} dt={}".format(
+                        fun.__name__, len(msg), seq, last, ident, dup, dt
+                    )
+                )
                 try:
                     t0 = time.ticks_ms()
                     resp = fun(name, msg, seq, last)
@@ -322,7 +339,7 @@ class MQRepl:
                         Loop.create_task(self._send_stream(rtopic, resp))
                     else:
                         log.debug("pub {} -> {}".format(len(resp), rtopic))
-                        Loop.create_task(self.mqclient.publish(rtopic, b'\x80\0' + resp, qos=1))
+                        Loop.create_task(self.mqclient.publish(rtopic, b"\x80\0" + resp, qos=1))
                 except ValueError as e:
                     buf = "MQRepl protocol error {}: {}".format(cmd, e.args[0])
                     Loop.create_task(self.mqclient.publish(errtopic, buf, qos=1))
@@ -334,14 +351,18 @@ class MQRepl:
                     micropython.mem_info()
                     Loop.create_task(self.mqclient.publish(errtopic, errbuf, qos=1))
             except KeyError:
-                Loop.create_task(self.mqclient.publish(errtopic, "Command '" + cmd + "' not supported", qos=1))
+                Loop.create_task(
+                    self.mqclient.publish(errtopic, "Command '" + cmd + "' not supported", qos=1)
+                )
+
 
 def start(mqtt, config):
     mqr = MQRepl(mqtt, config)
 
-#def doit():
+
+# def doit():
 #    mqr = MQRepl(config)
 #    Loop.create_task(mqr.start())
 #    Loop.run_forever()
 #
-#if __name__ == '__main__': doit()
+# if __name__ == '__main__': doit()

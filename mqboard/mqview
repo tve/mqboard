@@ -10,6 +10,7 @@ logging.basicConfig(level=logging.WARNING)
 log = logging.getLogger("mqboard")
 log.setLevel(logging.INFO)
 
+
 @click.command()
 @click.option(
     "--server",
@@ -65,7 +66,7 @@ def cli(server, port, tls, topic):
     is_conn = False
 
     def on_stdout(cli, ud, msg):
-        m = msg.payload.decode('utf-8')
+        m = msg.payload.decode("utf-8")
         if len(m) < 4:
             print(m)
             return
@@ -90,6 +91,7 @@ def cli(server, port, tls, topic):
     while exit_code is None:
         _mqclient.loop(0.2)
     sys.exit(exit_code)
+
 
 if __name__ == "__main__":
     cli()
