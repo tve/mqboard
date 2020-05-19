@@ -1,0 +1,124 @@
+#! /usr/bin/python
+import os, sys, fileinput, subprocess, hashlib
+from pprint import pprint
+from glob import glob
+
+CMD = """import uhashlib, ubinascii, uos
+def _ls(d):
+  def _file_sha(f):
+    h = uhashlib.sha1()
+    with open(f, "rb") as f:
+      b = f.read(1024)
+      while b != b"":
+        h.update(b)
+        b = f.read(1024)
+    return str(ubinascii.hexlify(h.digest()), "utf-8")
+  def _ls_dir(d):
+    if d != "" and d[-1] != "/": d += "/"
+    for f in uos.ilistdir(d):
+      if f[1] & 0x4000: pass # _ls_dir(d + f[0])
+      else: print("'%s':'%s'" % (f[0], _file_sha(d + f[0])))
+  try: _ls_dir(d)
+  except OSError: pass
+"""
+
+
+def file_hash(fn):
+    sha = hashlib.sha1()
+    with open(fn, "rb") as f:
+        while True:
+            buf = f.read(4096)
+            if len(buf) == 0:
+                return sha.hexdigest()
+            sha.update(buf)
+
+
+spec = {}
+lnum = 0
+tgt_dir = None
+for line in fileinput.input():
+    lnum += 1
+    comment = line.find("#")
+    if comment >= 0:
+        line = line[:comment]
+    line = line.rstrip()
+    if line == "":
+        continue
+    if line.startswith(" "):
+        if not tgt_dir:
+            print("line %d: no target directory set" % lnum, file=sys.stderr)
+            sys.exit(1)
+        tok = line.split()
+        if len(tok) == 0:
+            print("line %d: expected src dir, colon, and source files" % lnum, file=sys.stderr)
+            sys.exit(1)
+        src_dir = "."
+        if tok[0].endswith(":"):
+            src_dir = tok[0][:-1].rstrip()
+            del tok[0]
+        if not src_dir.endswith("/"):
+            src_dir += "/"
+        for t in tok:
+            if tgt_dir not in spec:
+                spec[tgt_dir] = {"files": []}
+            spec[tgt_dir]["files"].append(src_dir + t)
+            # print("%s <- %s" % (tgt_dir, src_dir + t))
+    else:
+        tok = line.split()
+        if len(tok) == 0 or not tok[0].endswith(":"):
+            print("line %d: expected target directory followed by colon" % lnum, file=sys.stderr)
+            sys.exit(1)
+        tgt_dir = tok[0][:-1].rstrip()
+# pprint(spec)
+
+for dir, src in spec.items():
+    print("Target directory", dir)
+    cmd = CMD + "_ls('" + dir + "'); del _ls"
+    result = subprocess.run(
+        ["mqboard", "exec", cmd], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    )
+    result = result.stdout.decode("utf-8").strip()
+    # print(result)
+    if result == "":
+        # dir doesn't exist
+        MKDIR = (
+            "import uos; p=''\n"
+            "for d in '%s'.split('/'):\n"
+            "  p += d;\n"
+            "  try: uos.mkdir(p)\n"
+            "  except OSError: pass\n"
+            "  if not p.endswith('/'): p += '/'\n"
+        )
+        subprocess.run(
+            ["mqboard", "exec", MKDIR % dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        tgt_files = {}
+    else:
+        tgt_files = eval("{" + result.replace("\n", ",") + "}")
+        # print("files:", repr(tgt_files))
+
+    # Expand wildcards in source files
+    src_files = []
+    for src_file in src["files"]:
+        if "*" in src_file or "?" in src_file:
+            src_files += glob(src_file)
+        else:
+            src_files.append(src_file)
+
+    for src_file in src_files:
+        tgt_file = src_file
+        if "/" in tgt_file:
+            tgt_file = src_file[src_file.rindex("/") + 1 :]
+        # print("Evaluating", src_file, "->", tgt_file)
+        why = "MISSING"
+        if tgt_file in tgt_files:
+            src_sha1 = file_hash(src_file)
+            if src_sha1 == tgt_files[tgt_file]:
+                print("  OK", tgt_file)
+                continue
+            why = "SHADIFF"
+            # print("  SHA MISMATCH src=%s dst=%s" % (src_sha1, tgt_files[tgt_file]))
+        print("  %s %s -> %s" % (why, src_file, dir + "/" + tgt_file))
+        subprocess.run(
+            ["mqboard", "put", src_file, dir + "/" + tgt_file], stderr=subprocess.DEVNULL
+        )
