@@ -184,7 +184,7 @@ def basicConfig(level=INFO, filename=None, stream=None, format=None):
         print("format arg is not supported")
 
 
-MAX_LINE = const(256)  # max line length sent by MQTT logger
+MAX_LINE = const(1024)  # max line length sent by MQTT logger
 
 
 class MQTTLog:
@@ -199,7 +199,7 @@ class MQTTLog:
 
     def resize(self, maxsize):
         self._qmax = maxsize
-        # first try to eliminate messages below warning
+        # first try to eliminate messages below warning level
         i = 0
         while self._qlen > maxsize and i < len(self._q):
             if self._q[i][0] < WARNING:
@@ -208,7 +208,7 @@ class MQTTLog:
             i += 1
         # if not there yet, eliminate other messages too
         while self._qlen > maxsize:
-            self._qlen -= len(self._q[0])
+            self._qlen -= len(self._q[0][1])
             del self._q[0]
 
     def log(self, level, msg):
