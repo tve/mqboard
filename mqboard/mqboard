@@ -226,18 +226,28 @@ def exec(statement):
 
 # ========== reset ==========
 @cli.command()
-def reset():
+@click.option(
+    "--safemode",
+    "-s",
+    is_flag=True,
+    help="Enter safe-mode loop, else regular loop",
+    default=False,
+    required=False,
+)
+def reset(safemode):
     """Reset the board
     """
+    sf = str(safemode)
     cmd = (
-        "import uasyncio, machine, logging\n"
+        "import uasyncio, machine\n"
         "async def do_reset():\n"
-        "    log.critical('Resetting via mqboard')\n"
-        "    if 'safemode' in sys.modules:\n"
-        "        sys.modules['safemode'].safe_ok()\n"
         "    await uasyncio.sleep_ms(600)\n"
         "    machine.reset()\n"
         "uasyncio.Loop.create_task(do_reset())\n"
+        "try:\n"
+        "    sys.modules['safemode'].force(" + sf + ")\n"
+        "    log.critical('Resetting via mqboard safemode=" + sf + "')\n"
+        "except Exception: pass\n"
     )
     perform(_mqclient, _mqclient._userdata, "cmd/exec", cmd, print_msg)
 
@@ -269,28 +279,42 @@ def get(remote_file, local_file):
 
 # ========== mkdir ==========
 @cli.command()
-# @click.option("--ignore", "-i", is_flag=True, help="Ignore if the directory already exists.")
+@click.option("--ignore", "-i", is_flag=True, help="Ignore if the directory already exists.")
 @click.argument("directory")
-def mkdir(directory, exists_okay):
+def mkdir(directory, ignore):
     """Create a directory on the board.
     """
-    expression = "import uos; uos.mkdir('%s')" % directory
+    if ignore:
+        expression = "import uos; try: uos.mkdir('%s')\nexcept OSError: pass" % directory
+    else:
+        expression = "import uos; uos.mkdir('%s')" % directory
     perform(_mqclient, _mqclient._userdata, "cmd/exec", expression, print_msg)
 
 
 # ========== ls ==========
 @cli.command()
 @click.argument("directory", default="/")
-# @click.option("--long_format", "-l", is_flag=True, help="Print long format info.")
-# @click.option("--recursive", "-r", is_flag=True, help="Recursively list files and directories.")
-def ls(directory, long_format, recursive):
+@click.option("--recursive", "-r", is_flag=True, help="Recursively list files and directories.")
+def ls(directory, recursive):
     """List contents of a directory on the board.
     """
-    cmd = (
-        "import uos\nfor f in uos.ilistdir('%s'):\n"
-        " print('{:12} {}{}'.format(f[3]if len(f)>3 else 0,f[0],'/'if f[1]&0x4000 else ''))"
-        % (directory)
-    )
+    if recursive:
+        cmd = (
+            "import uos\n"
+            "def _ls_dir(d):\n"
+            "  if d != '' and d[-1] != '/': d += '/'\n"
+            "  for f in uos.ilistdir(d):\n"
+            "    if f[1]&0x4000: _ls_dir(d+f[0])\n"
+            "    else: print('{:12} {}{}'.format(f[3],d,f[0]))\n"
+            "_ls_dir('" + directory + "')\n"
+            "del _ls_dir"
+        )
+    else:
+        cmd = (
+            "import uos\nfor f in uos.ilistdir('%s'):\n"
+            " print('{:12} {}{}'.format(f[3]if len(f)>3 else 0,f[0],'/'if f[1]&0x4000 else ''))"
+            % (directory)
+        )
     perform(_mqclient, _mqclient._userdata, "cmd/exec", cmd, print_msg)
 
 
@@ -321,7 +345,7 @@ def put(local, remote):
 # ========== ota ==========
 @cli.command()
 @click.argument("application_bin", type=click.Path(exists=True))
-def ota(local):
+def ota(application_bin):
     """Perform a MicroPython firmware update over-the-air
     """
     # open the file and copy its contents to the board.
@@ -329,7 +353,7 @@ def ota(local):
         pass
 
     # Put the file on the board.
-    with open(local, "rb") as infile:
+    with open(application_bin, "rb") as infile:
         contents = infile.read()
         sha = hashlib.sha256(contents).hexdigest()
         perform(_mqclient, _mqclient._userdata, "cmd/ota", contents, on_msg, tail=sha)
