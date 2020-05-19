@@ -5,13 +5,22 @@
 import sys, io
 
 try:
-    from time import ticks_ms
+    from time import ticks_ms, ticks_diff, ticks_add, time, localtime
     from uasyncio import Event, get_event_loop, sleep_ms
 except Exception:
-    from time import monotonic
+    from time import monotonic, time
 
     def ticks_ms():
         return monotonic() * 1000
+
+    def ticks_diff(a, b):
+        return a - b
+
+    def ticks_add(a, b):
+        return a + b
+
+    def const(c):
+        return c
 
     from asyncio import Event, get_event_loop, sleep
 
@@ -46,6 +55,11 @@ _level_dict = {
 _dup = None
 _stream = sys.stderr
 
+_hour_ticks = None  # ticks_ms value at top of last hour
+_hour = None
+TICKS_PER_HOUR = const(3600 * 1000)
+TIME_2020 = const(631180800)  # time.mktime((2020,1,1,0,0,0,0,0,0))
+
 
 class Logger(io.IOBase):
 
@@ -67,12 +81,31 @@ class Logger(io.IOBase):
     def isEnabledFor(self, level):
         return level >= (self.level or _level)
 
+    # calculate time-of-day from ticks_ms by using offset to the last top of the hour
+    @staticmethod
+    def _time_str(t):
+        global _hour_ticks, _hour
+        if _hour_ticks is None or ticks_diff(t, _hour_ticks) > TICKS_PER_HOUR:
+            tm = time()
+            if tm < TIME_2020:  # we don't know the time
+                return str(t)
+            tm = localtime(tm)
+            _hour = tm[3]
+            _hour_ticks = ticks_add(t, -(((tm[4] * 60) + tm[5]) * 1000))
+        dt = ticks_diff(t, _hour_ticks)
+        return "%02d:%02d:%02d.%03d" % (
+            _hour,
+            (dt // 60000) % 60,  # minutes
+            (dt // 1000) % 60,  # seconds
+            dt % 1000,  # millis
+        )
+
     def log(self, level, msg, *args):
         t = ticks_ms() % 100000000
         if level < (self.level or _level):
             return
         # prep full text
-        line = "%s %d %8s: " % (self._level_str(level), t, self.name)
+        line = "%s %s %8s: " % (self._level_str(level), Logger._time_str(t), self.name)
         if args:
             msg = msg % args
         if not isinstance(msg, str):
