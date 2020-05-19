@@ -222,7 +222,7 @@ class MQRepl:
             raise ValueError(ERR_SINGLEMSG)
         cmd = str(cmd, "utf-8")
         log.debug("exec %s", cmd)
-        outbuf = io.BytesIO(BUFLEN)
+        outbuf = io.BytesIO(BUFLEN)  # FIXME: need to stream output back
         old_term = os.dupterm(outbuf)
         try:
             op = compile(cmd, "<exec>", "exec")
@@ -261,7 +261,6 @@ class MQRepl:
             self._put_fd = None
             self._put_seq = None
             return "OK"
-        return None
 
     # do_ota uploads a new firmware over-the-air and activates it for the next boot
     # the fname passed in must be the sha256 of the firmware
@@ -269,9 +268,10 @@ class MQRepl:
         if seq == 0:
             self._ota = OTA()
         if self._ota is not None:
-            ret = await self._ota.handle(fname, msg, seq, last)
+            ret = self._ota.handle(fname, msg, seq, last)
             if last:
                 self._ota = None
+            gc.collect()  # needed!
             return ret
 
     # Helpers
@@ -344,7 +344,7 @@ class MQRepl:
                     buf = "MQRepl protocol error {}: {}".format(cmd, e.args[0])
                     Loop.create_task(self.mqclient.publish(errtopic, buf, qos=1))
                 except Exception as e:
-                    errbuf = io.BytesIO(1400)
+                    errbuf = io.BytesIO(1024)
                     sys.print_exception(e, errbuf)
                     errbuf = errbuf.getvalue()
                     log.warning("Exception: <<%s>>", errbuf)
