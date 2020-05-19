@@ -1,9 +1,12 @@
 # This file is executed on every boot (including wake-boot from deepsleep)
 
-import gc
+# import built-in modules, they will also be available to remote eval's/exec's
+import gc, sys, machine
+
+# set a GC threshold to reduce heap fragmentation woes
 gc.threshold(4096)
 
-import sys
+# set import path to include src dir
 sys.path.append("/src")
 
 try:
@@ -24,7 +27,7 @@ except ImportError:
 log = logging.getLogger("main")
 
 from esp32 import Partition as p
-log.info("Booting partition %s", p(p.RUNNING).info()[4])
+log.warning("Booting partition %s", p(p.RUNNING).info()[4])
 del p
 
 # if board config defines watchdog_timeout then init the WDT right here so it starts as early
@@ -39,16 +42,15 @@ try:
         except Exception as e:
             log.exc(e, "Failed to start WDT due to:")
 except ImportError:
-    log.info("WDT not started")
+    log.warning("WDT not started")
 
 # print reset cause in text form by reversing reset cause constants (yuck!)
-import machine
 cnum = machine.reset_cause()
 for n in dir(machine):
     if n.endswith("_RESET") and getattr(machine, n) == cnum:
-        log.info("Reset cause: %s", n)
+        log.warning("Reset cause: %s", n)
         break
 else:
-    log.info("Reset cause: %s", cnum)
+    log.warning("Reset cause: %s", cnum)
 del cnum
 del n
