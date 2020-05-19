@@ -458,9 +458,12 @@ class MQTTProto:
             # Dispatch to user's callback handler
             log.debug("dispatch pub %s pid=%s qos=%d", topic, pid, qos)
             # t1 = ticks_ms()
-            cb = self._subs_cb(topic, msg, bool(retained), qos, dup)
-            if is_awaitable(cb):
-                await cb  # handle _subs_cb being coro
+            try:
+                cb = self._subs_cb(topic, msg, bool(retained), qos, dup)
+                if is_awaitable(cb):
+                    await cb  # handle _subs_cb being coro
+            except Exception as e:
+                log.exc(e, "exception in handler")
             # t2 = ticks_ms()
             # Send PUBACK for QoS 1 messages
             if qos == 1:
