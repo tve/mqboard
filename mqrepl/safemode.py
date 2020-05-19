@@ -6,6 +6,8 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 rtc = RTC()
 
+MIN_RUNTIME = const(300)  # minimum runtime req'd in previous life to enter regular mode
+
 
 async def safe_conn(cli):
     global conn
@@ -14,12 +16,13 @@ async def safe_conn(cli):
 
 async def safe_loop(mqtt):
     await conn.wait()
-    await asyncio.sleep(300)  # safe mode delay
+    await asyncio.sleep(MIN_RUNTIME)  # safe mode delay
 
 
-# safe_ok flags that a coming reboot should not enter safe mode
-def safe_ok():
-    rtc.memory(struct.pack("Ii", 0xFEEDF00D, time.time() - 301))
+# force a coming reboot into safemode or into regular mode
+def force(safe=False):
+    fake_runtime = 0 if safe else MIN_RUNTIME
+    rtc.memory(struct.pack("Ii", 0xFEEDF00D, time.time() - fake_runtime))
 
 
 def start(mqtt, config=None):
@@ -46,7 +49,7 @@ def start(mqtt, config=None):
     # if the time is not set there was a hard reset or power cycle: no need for safe mode
     # if the system was up for more than 5 minutes: no need for safe mode
     log.info("Time=%d, Last boot=%s", this_boot, last_boot)
-    if last_boot is not None and this_boot - last_boot < 300:
+    if last_boot is not None and this_boot - last_boot < MIN_RUNTIME:
         # enter safe mode
         mqtt.on_connect(safe_conn)
         log.warning("-- Starting SAFE MODE loop")
