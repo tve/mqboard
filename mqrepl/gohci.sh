@@ -8,11 +8,11 @@ echo "---- checking pyboard serial ----"
 pyboard.py -c "print('hello world')" || true
 
 echo "---- installing files ----"
-pyboard.py -f cp mqrepl.py mqwdt.py :
+pyboard.py -f cp mqrepl.py watchdog.py :
 
 echo "---- running test ----"
 #cat /tmp/foo
-out=$(pyboard.py test_mqrepl.py)
+out=$(pyboard.py test-mqrepl.py)
 #echo "$out"
 if [[ "$out" != *"start-stop OK"*"eval command OK"* ]]; then
 	echo "OOPS, got:\n$out"

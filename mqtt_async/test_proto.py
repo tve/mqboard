@@ -40,9 +40,9 @@ except:
 # callback handlers
 
 pub_q = []
-async def got_pub_coro(topic, msg, retain, qos):
+async def got_pub_coro(topic, msg, retain, qos, dup):
     pub_q.append(MQTTMessage(topic, msg, retain, qos))
-def got_pub(topic, msg, retain, qos):
+def got_pub(topic, msg, retain, qos, dup):
     pub_q.append(MQTTMessage(topic, msg, retain, qos))
 
 pingresp = False

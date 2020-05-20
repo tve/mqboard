@@ -17,15 +17,17 @@ done
 ls -ls $TF
 
 echo "---- updating board config ----"
-pyboard.py -c "with open('board_config.py', 'a') as f: f.write('modules=[\"mqrepl\"]\n')"
+#config='mqrepl = {"prefix" : mqtt["user"] + "/mqb/"}\nmodules=["mqrepl"]\n'
+config='\nmodules=["mqtt", "mqrepl"]\n'
+pyboard.py -c "with open('board_config.py', 'a') as f: f.write('$config')"
 
 echo "---- fetching mqrepl topic ----"
-out=$(timeout 20s pyboard.py -c "import machine; machine.reset()")
+out=$(timeout 15s pyboard.py -c "import machine; machine.reset()")
 if ! echo "$out" | egrep -q "mqrepl: Subscribed"; then
     echo "OOPS, got:\n$out"
     exit 1
 fi
-export MQBOARD_TOPIC=$(echo "$out" | egrep "mqrepl: Subscribed" | sed -e "s/.*'\(.*\)\/cmd.*/\1/")
+export MQBOARD_TOPIC=$(echo "$out" | egrep "mqrepl: Subscribed" | sed -e "s/.* \(.*\)\/cmd.*/\1/")
 echo "topic is <$MQBOARD_TOPIC>"
 
 echo "---- waiting for mqrepl to connect ----"
@@ -62,7 +64,7 @@ def rmdir(dir):
         if e.args[0] != 2:
             print(e)
 '
-./mqboard exec "$RMDIR""rmdir('/test')" || exit 1
+./mqboard eval "$RMDIR""rmdir('/test')" || exit 1
 
 
 echo 'SUCCESS!'

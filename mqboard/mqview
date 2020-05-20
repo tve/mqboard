@@ -44,12 +44,12 @@ log.setLevel(logging.INFO)
     envvar="MQBOARD_TOPIC",
     required=True,
     type=click.STRING,
-    help="MQTT topic prefix (just before '/stdout'), default None or MQBOARD_TOPIC env var.",
+    help="MQTT topic prefix (just before '/log'), default None or MQBOARD_TOPIC env var.",
     metavar="TOPIC",
 )
 @click.version_option()
 def cli(server, port, tls, topic):
-    """mqview - MQTT MicroPython stdout viewer
+    """mqview - MQTT MicroPython log viewer
     """
     global _mqclient
 
@@ -60,12 +60,12 @@ def cli(server, port, tls, topic):
     _mqclient.enable_logger(logging.getLogger("paho-mqtt"))
     if tls:
         _mqclient.tls_set()
-    topic += "/stdout"
+    topic += "/log"
 
     exit_code = None
     is_conn = False
 
-    def on_stdout(cli, ud, msg):
+    def on_log(cli, ud, msg):
         m = msg.payload.decode("utf-8")
         if len(m) < 4:
             print(m)
@@ -77,9 +77,9 @@ def cli(server, port, tls, topic):
         nonlocal is_conn
         if rc != 0:
             raise click.UsageError(paho.connack_string(rc))
-        log.debug("Connected! Subscribing to %s", topic)
+        log.info("Connected, subscribing to %s", topic)
         _mqclient.subscribe(topic, qos=1)
-        _mqclient.message_callback_add(topic, on_stdout)
+        _mqclient.message_callback_add(topic, on_log)
         is_conn = True
 
     log.debug("Connecting to {}:{}".format(server, port))
@@ -87,7 +87,6 @@ def cli(server, port, tls, topic):
     _mqclient.connect(server, port)
     while not is_conn:
         _mqclient.loop(0.2)
-    log.info("Connected to {}:{}".format(server, port))
     while exit_code is None:
         _mqclient.loop(0.2)
     sys.exit(exit_code)

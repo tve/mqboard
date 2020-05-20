@@ -1,9 +1,17 @@
 #! /bin/bash -e
 DIR=$(dirname $0)
 echo device: ${PYBOARD_DEVICE:-/dev/ttyACM0}
-pyboard -f cp $DIR/board/{board,boot,logging,main,mqtt}.py $DIR/mqrepl/{mqrepl,watchdog,safemode}.py $DIR/mqtt_async/mqtt_async.py :
+
+pyboard -f cp $DIR/board/{boot,main}.py :
+[[ "$(pyboard -f ls)" != *safemode* ]] && pyboard -f mkdir /safemode
+pyboard -f cp $DIR/board/{board,logging,mqtt}.py $DIR/mqrepl/{mqrepl,watchdog}.py $DIR/mqtt_async/mqtt_async.py :/safemode/
+
 if [[ "$(pyboard -f ls)" != *board_config.py* ]]; then
-    echo "Please load board_config.py manually"
+    if [[ -f $DIR/board/board_config.py ]]; then
+        pyboard -f cp $DIR/board/board_config.py :
+    else
+        echo "Please load board_config.py manually"
+    fi
 else
     echo "board_config.py left as-is"
 fi

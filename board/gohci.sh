@@ -34,18 +34,18 @@ echo did reset
 
 echo "----- test boot -----"
 out=$(timeout 6s pyboard.py test-boot.py)
-if [[ "$out" == *OOPS* || "$out" != *"WDT not started"*"Reset cause: SOFT_RESET"* ]]; then
+if [[ "$out" == *OOPS* || "$out" != *"SAFE MODE"*"Reset cause: SOFT_RESET"* ]]; then
 	echo OOPS, got: "$out"
 	exit 1
 fi
 echo "$out" | head -3
-echo "$out" | egrep 'Booting|WDT|Reset cause'
+echo "$out" | egrep -i 'boot|safe|reset'
 pyboard.py -f cp mqtt.py :
 
 echo "----- test main -----"
 out=$(pyboard.py test-main.py)
 if [[ "$out" == *OOPS* || \
-    "$out" != *"gc_collect: OK"*"no module named"*"module1 OK"*"module2 OK"*"function takes"* \
+    "$out" != *"no module named"*"module1 OK"*"module2 OK"*"function takes"* \
     ]]; then
 	echo OOPS, got: "$out"
 	exit 1

@@ -11,8 +11,6 @@
 # The imports below are a little tricky in order to support operation under Micropython as well as
 # Linux CPython. The latter is used for tests.
 
-VERSION = (0, 9, 0)
-
 import gc, socket, struct
 from binascii import hexlify
 from errno import EINPROGRESS
@@ -94,8 +92,7 @@ CONN_TIMEOUT = "Connection timed out"
 PROTO_ERROR = "Protocol error"
 CONN_ERRS = ["inv proto vers", "client_id rejected", "srv down", "user/pass malformed", "not auth"]
 
-# config holds the default values for all configuration items, it should be updated and
-# passed into the MQTTClient constructor.
+# config holds the default values for all configuration items.
 config = {
     "client_id": hexlify(unique_id()),
     "server": None,
@@ -486,9 +483,10 @@ PING_PID = const(100000)  # fake pid used in handling of ping acks
 
 # MQTTClient class.
 class MQTTClient:
-    def __init__(self, config):
+    def __init__(self, conf):
         # handle config
-        self._c = config
+        self._c = config.copy()
+        self._c.update(conf)
         # config last will and keepalive
         if self._c["will"] is None:
             self._c["keepalive"] = 0  # no point setting MQTT keepalive if there's no lw
@@ -499,9 +497,9 @@ class MQTTClient:
         if self._c["keepalive"] > 0 and self._c["keepalive"] < self._c["response_time"] * 2:
             raise ValueError("keepalive <2x response_time")
         # config server and port
-        if config["port"] == 0:
-            self._c["port"] = 8883 if config["ssl_params"] else 1883
-        if config["server"] is None:
+        if self._c["port"] == 0:
+            self._c["port"] = 8883 if self._c["ssl_params"] else 1883
+        if self._c["server"] is None:
             raise ValueError("no server")
         # init instance vars
         self._proto = None
@@ -613,18 +611,19 @@ class MQTTClient:
             raise OSError(-1, "disconnect while connecting")
         # If we get here without error broker/LAN must be up.
         loop = asyncio.get_event_loop()
-        # Notify app that Wifi is up
-        if self._c["wifi_coro"] is not None:
-            loop.create_task(self._c["wifi_coro"](True))  # Notify app that Wifi is up
         # Start background coroutines that run until the user calls disconnect
         if self._conn_keeper is None:
             self._conn_keeper = loop.create_task(self._keep_connected())
         # Start background coroutines that quit on connection fail
         loop.create_task(self._handle_msgs(self._proto))
         loop.create_task(self._keep_alive(self._proto))
-        # Notify app that we're connceted and ready to roll
+        # Notify app that we're connected and ready to roll
         if self._c["connect_coro"] is not None:
             loop.create_task(self._c["connect_coro"](self))
+            self._c["connect_coro"] = None # FIXME: nasty...
+        # Notify app that broker is connected
+        if self._c["wifi_coro"] is not None:
+            loop.create_task(self._c["wifi_coro"](True))  # Notify app that Wifi is up
         # log.debug("connected")
 
     async def disconnect(self):

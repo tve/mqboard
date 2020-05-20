@@ -4,9 +4,10 @@
 
 import sys, io
 
+
 try:
     from time import ticks_ms, ticks_diff, ticks_add, time, localtime
-    from uasyncio import Event, get_event_loop, sleep_ms
+    from uasyncio import Event, sleep_ms, Loop as loop
 except Exception:
     from time import monotonic, time
 
@@ -23,6 +24,8 @@ except Exception:
         return c
 
     from asyncio import Event, get_event_loop, sleep
+
+    loop = get_event_loop()
 
     async def sleep_ms(ms):
         await sleep(ms / 1000)
@@ -187,65 +190,86 @@ def basicConfig(level=INFO, filename=None, stream=None, format=None):
 MAX_LINE = const(1024)  # max line length sent by MQTT logger
 
 
+# MQTTLog logs via MQTT; do not instantiate directly, use MQTTLog function
 class MQTTLog:
-    def __init__(self, minlevel=ERROR, maxsize=2800):
-        global _dup
-        self._minlevel = minlevel
-        self._qmax = maxsize
-        self._q = []
-        self._qlen = 0
-        self._ev = Event()
-        _dup = self
+    _minlevel = ERROR
+    _qmax = 1400
+    _q = []
+    _qlen = 0
+    _ev = Event()
 
-    def resize(self, maxsize):
-        self._qmax = maxsize
+    @classmethod
+    def init(cls, minlevel=ERROR, maxsize=1400):
+        global _dup
+        _dup = cls
+        cls._minlevel = minlevel
+        cls.resize(maxsize)
+
+    @classmethod
+    def resize(cls, maxsize):
+        cls._qmax = maxsize
         # first try to eliminate messages below warning level
         i = 0
-        while self._qlen > maxsize and i < len(self._q):
-            if self._q[i][0] < WARNING:
-                self._qlen -= len(self._q[i][1])
-                del self._q[i]
+        while cls._qlen > maxsize and i < len(cls._q):
+            if cls._q[i][0] < WARNING:
+                cls._qlen -= len(cls._q[i][1])
+                del cls._q[i]
             i += 1
         # if not there yet, eliminate other messages too
-        while self._qlen > maxsize:
-            self._qlen -= len(self._q[0][1])
-            del self._q[0]
+        while cls._qlen > maxsize:
+            cls._qlen -= len(cls._q[0][1])
+            del cls._q[0]
 
-    def log(self, level, msg):
-        if level < self._minlevel:
+    @classmethod
+    def log(cls, level, msg):
+        if level < cls._minlevel:
             return
         if len(msg) > MAX_LINE:
             msg = msg[:MAX_LINE]
         ll = len(msg)
-        self.resize(self._qmax)
-        self._q.append((level, msg))
-        self._qlen += ll
-        self._ev.set()
+        cls.resize(cls._qmax)
+        cls._q.append((level, msg))
+        cls._qlen += ll
+        cls._ev.set()
 
-    async def run(self, mqclient, topic):
-        print("MQTTLog:", topic)
+    @classmethod
+    async def push(cls, mqclient, topic):
+        msg = cls._q[0][1]
+        try:
+            await mqclient.publish(topic, msg, qos=1, sync=False)
+        except Exception as e:
+            print("Exception", e)
+            await sleep_ms(1000)
+        cls._qlen -= len(msg)
+        del cls._q[0]
+
+    @classmethod
+    async def run(cls, mqclient, topic):
         while True:
-            while len(self._q) > 0:
-                msg = self._q[0][1]
-                try:
-                    await mqclient.publish(topic, msg, qos=1, sync=False)
-                except Exception as e:
-                    print("Exception", e)
-                    await sleep_ms(1000)
-                self._qlen -= len(msg)
-                del self._q[0]
-            self._ev.clear()
-            await self._ev.wait()
+            while len(cls._q) > 0:
+                await cls.push(mqclient, topic)
+            cls._ev.clear()
+            await cls._ev.wait()
+
+    # connected is called when the first bropker connection is established, it flushes excess
+    # saved messages while blocking further inits by other modules, then resizes the log storage,
+    # and starts the regular runner/flusher
+    @classmethod
+    async def connected(cls, mqtt, config):
+        topic = config["topic"]
+        getLogger("main").info("Logging to %s", topic)
+        # flush what we'd need cut due to resize
+        maxsize = config.get("loop_sz", 1400)
+        while cls._qlen > maxsize:
+            await cls.push(mqtt.client, topic)
+        # re-init including resize
+        MQTTLog.init(
+            minlevel=config.get("loop_level", WARNING), maxsize=maxsize,
+        )
+        # launch regular flusher
+        loop.create_task(MQTTLog.run(mqtt.client, topic))
 
 
+# start is called when the module is loaded, just save the config and register on_init CB
 def start(mqtt, config):
-    try:
-        from __main__ import mqtt_logger
-
-        mqtt_logger.resize(config.get("loop_sz", 1400))
-        mqtt_logger.level = config.get("loop_level", WARNING)
-        #
-        get_event_loop().create_task(mqtt_logger.run(mqtt.client, config["topic"]))
-    except Exception as e:
-        print("MQTTLog failed to start")
-        sys.print_exception(e)
+    mqtt.on_init(MQTTLog.connected(mqtt, config))

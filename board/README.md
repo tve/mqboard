@@ -82,6 +82,14 @@ Currently this is only used in `board.py` to define a small number of convenienc
 light LEDs and to measure battery voltage. It is also an often convenient variable to select
 peripheral pins in projects so the same code can work e.g. on a prototype board and on a final PCB.
 
+## Safe mode
+
+The safe mode check relies on RTC memory, but any memory that doesn't get erased at every reset
+could be used. It detects 3 states: memory is uninitialized, happens at power-up or on external
+HW reset on the ESP32
+
+Note: the safe mode relies on an ESP32 fix of RTC memory!
+
 ## Boot process
 
 The overall boot process is as follows:

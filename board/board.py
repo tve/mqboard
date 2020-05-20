@@ -56,7 +56,15 @@ elif kind == "ezsbc":
 elif kind == "tinypico":
     # TinyPICO has an RGB LED so we use the red channel for WiFi and the blue
     # channel for message rx
-    from led import dotstar
+    from machine import SPI, Pin
+    import tinypico as TinyPICO
+    from dotstar import DotStar
+
+    spi = SPI(
+        sck=Pin(TinyPICO.DOTSTAR_CLK), mosi=Pin(TinyPICO.DOTSTAR_DATA), miso=Pin(TinyPICO.SPI_MISO)
+    )
+    dotstar = DotStar(spi, 1, brightness=0.5)  # Just one DotStar, half brightness
+    TinyPICO.set_dotstar_power(True)
 
     color = [255, 0, 0]
 
@@ -83,16 +91,6 @@ def get_battery_voltage():
     measuredvbat *= 3.6 * bat_fct  # 3.6V at full scale
     return measuredvbat
 
-
-# ===== MQTT stuff
-# merge board-specific mqtt config into default config
-# in the app use `mqtt_async.MQTTClient(mqtt_async.config)`
-try:
-    from mqtt_async import config
-
-    config.update(mqtt_config)
-except Exception:
-    pass
 
 # ===== Wifi stuff
 # connect_wifi is a handy little function to manually connect wifi
