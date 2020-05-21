@@ -227,9 +227,10 @@ class MQTTLog:
         if len(msg) > MAX_LINE:
             msg = msg[:MAX_LINE]
         ll = len(msg)
-        cls.resize(cls._qmax)
         cls._q.append((level, msg))
         cls._qlen += ll
+        if cls._qlen > cls._qmax:
+            cls.resize(cls._qmax)
         cls._ev.set()
 
     @classmethod
@@ -260,12 +261,14 @@ class MQTTLog:
         getLogger("main").info("Logging to %s", topic)
         # flush what we'd need cut due to resize
         maxsize = config.get("loop_sz", 1400)
-        while cls._qlen > maxsize:
+        getLogger("main").info("Log buf: %d/%d bytes", cls._qlen, cls._qmax)
+        while cls._qlen > maxsize*3//4:
             await cls.push(mqtt.client, topic)
         # re-init including resize
         MQTTLog.init(
             minlevel=config.get("loop_level", WARNING), maxsize=maxsize,
         )
+        getLogger("main").info("Log buf: %d/%d bytes", cls._qlen, cls._qmax)
         # launch regular flusher
         loop.create_task(MQTTLog.run(mqtt.client, topic))
 

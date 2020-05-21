@@ -65,10 +65,10 @@ except ImportError as e:
 #
 # If board config defines logging_config then init logging to buffer the boot messages.
 # Logging will be re-initialized once main calls it's start() function.
-if hasattr(board, "logging_config"):
+if hasattr(board, "logging"):
     logging.MQTTLog.init(
-        minlevel=board.logging_config.get("boot_level", logging.INFO),
-        maxsize=board.logging_config.get("boot_sz", 2880),
+        minlevel=board.logging.get("boot_level", logging.INFO),
+        maxsize=board.logging.get("boot_sz", 2880),
     )
 log = logging.getLogger("main")  # will remain in global namespace
 
