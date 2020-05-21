@@ -75,7 +75,7 @@ for dir, src in spec.items():
     print("Target directory", dir)
     cmd = CMD + "_ls('" + dir + "'); del _ls"
     result = subprocess.run(
-        ["mqboard", "exec", cmd], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+        ["mqboard", "eval", cmd], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
     )
     result = result.stdout.decode("utf-8").strip()
     # print(result)
@@ -90,7 +90,7 @@ for dir, src in spec.items():
             "  if not p.endswith('/'): p += '/'\n"
         )
         subprocess.run(
-            ["mqboard", "exec", MKDIR % dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            ["mqboard", "eval", MKDIR % dir], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
         tgt_files = {}
     else:

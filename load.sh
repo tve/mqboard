@@ -8,7 +8,7 @@ pyboard -f cp $DIR/board/{board,logging,mqtt}.py $DIR/mqrepl/{mqrepl,watchdog}.p
 
 if [[ "$(pyboard -f ls)" != *board_config.py* ]]; then
     if [[ -f $DIR/board/board_config.py ]]; then
-        pyboard -f cp $DIR/board/board_config.py :
+        pyboard -f cp $DIR/board/board_config.py :/safemode/
     else
         echo "Please load board_config.py manually"
     fi
