@@ -24,12 +24,12 @@ bat_fct = 2  # voltage divider factor
 
 if kind == "tve-bare":
     # bare esp32-wroom module with LED across IO23 and gnd
-    lpin = machine.Pin(23, machine.Pin.OUT, None, value=1)
+    lpin = machine.Pin(23, machine.Pin.OUT, None, value=0)
     led = lambda v: lpin(v)
     act_led, fail_led = (led, led)
 elif kind == "huzzah32":
     # Adafruit Huzzah32 feather
-    lpin = machine.Pin(13, machine.Pin.OUT, None, value=1)
+    lpin = machine.Pin(13, machine.Pin.OUT, None, value=0)
     led = lambda v: lpin(v)
     fail_led = led
 elif kind == "lolin-d32":
@@ -39,9 +39,14 @@ elif kind == "lolin-d32":
     bat_volt_pin = machine.ADC(machine.Pin(35))
     bat_volt_pin.atten(machine.ADC.ATTN_11DB)
     act_led, fail_led = (led, led)
+elif kind == "nodemcu":
+    # NodeMCU
+    lpin = machine.Pin(2, machine.Pin.OUT, None, value=0)
+    led = lambda v: lpin(v)
+    act_led, fail_led = (led, led)
 elif kind == "esp32thing":
     # Sparkfun ESP32 Thing
-    lpin = machine.Pin(5, machine.Pin.OUT, None, value=1)
+    lpin = machine.Pin(5, machine.Pin.OUT, None, value=0)
     led = lambda v: lpin(v)
     act_led, fail_led = (led, led)
 elif kind == "ezsbc":
