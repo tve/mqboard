@@ -4,6 +4,8 @@
 kind = "nodemcu"
 #kind = "huzzah32"
 #kind = "lolin-d32"
+#kind = "esp32thing"
+#kind = "tinypico"
 #kind = "ezsbc"
 
 # location is the system name and is used in mqtt topics, etc
@@ -45,7 +47,7 @@ mqrepl = {
 watchdog = {
     "prefix"  : mqrepl["prefix"],  # must be mqrepl["prefix"]
     "timeout" : 300,   # watchdog timeout in seconds, default is 300
-    "allok"   : 120,   # wait time in secs after connection before giving all-OK (no safe mode)
+    "allok"   : 600,   # wait time in secs after connection before giving all-OK (no safe mode)
     "revert"  : True,  # whether to revert from safe mode to normal mode after all-OK time
 }
 
