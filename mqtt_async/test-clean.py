@@ -1,4 +1,5 @@
 # Test clean flag with MQTTProto in mqtt_as.py
+# Copyright © 2020 by Thorsten von Eicken.
 # Running this test requires a broker and a topic that the test can subscribe to and publish to.
 # This test runs under micropython (`./pyb test-clean.py`)
 # Failures are not obvious, one has to interpret the output (sorry, this is used more to ensure

@@ -1,4 +1,5 @@
 # Benchmark MQTTClient in mqtt_async.py
+# Copyright © 2020 by Thorsten von Eicken.
 # More specifically, verify that the streaming pub produces the desired results.
 # Run this benchmark using cpython or micropython, a few changes commenting out pytest markers let
 # it run under pytest as well but the only benefit is if assertions fail to see details.

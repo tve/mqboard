@@ -1,4 +1,5 @@
 # work-arounds on micropython unix
+# Copyright © 2020 by Thorsten von Eicken.
 
 def unique_id(): return b'\xbe\xef\xf0\x0d'
 

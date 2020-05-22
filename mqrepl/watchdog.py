@@ -1,3 +1,5 @@
+# Watchdog task to keep feeding the watchdog timer via MQRepl
+# Copyright © 2020 by Thorsten von Eicken.
 import sys, machine, logging, time, struct, uasyncio as asyncio
 
 

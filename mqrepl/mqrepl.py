@@ -1,4 +1,5 @@
-# MQTT Repl for MicroPython by Thorsten von Eicken (c) 2020
+# MQTT Repl for MicroPython
+# Copyright © 2020 by Thorsten von Eicken.
 #
 # Requires mqtt_async for asyncio-based MQTT.
 

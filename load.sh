@@ -3,7 +3,7 @@ DIR=$(dirname $0)
 echo device: ${PYBOARD_DEVICE:-/dev/ttyACM0}
 
 pyboard -f cp $DIR/board/{boot,main}.py :
-[[ "$(pyboard -f ls)" != *safemode* ]] && pyboard -f mkdir /safemode
+[[ "$(pyboard -f ls)" == *safemode* ]] || pyboard -f mkdir /safemode
 pyboard -f cp $DIR/board/{board,logging,mqtt}.py $DIR/mqrepl/{mqrepl,watchdog}.py $DIR/mqtt_async/mqtt_async.py :/safemode/
 
 if [[ "$(pyboard -f ls)" != *board_config.py* ]]; then

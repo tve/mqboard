@@ -1,4 +1,5 @@
 # logging with MQTT support
+# Copyright © 2020 by Thorsten von Eicken.
 # This is a modified version of the micropython-lib logging module with the addition
 # of being able to log to MQTT.
 

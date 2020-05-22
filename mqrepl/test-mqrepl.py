@@ -1,3 +1,4 @@
+# Copyright © 2020 by Thorsten von Eicken.
 import mqrepl, logging
 import uasyncio as asyncio
 

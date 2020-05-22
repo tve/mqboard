@@ -1,3 +1,4 @@
+# Copyright © 2020 by Thorsten von Eicken.
 from mqtt_async import MQTTClient, config
 import uasyncio as asyncio
 import logging

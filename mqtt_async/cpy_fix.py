@@ -1,4 +1,5 @@
 # work-arounds on cpython to enable pytest testing of mqtt_as.py
+# Copyright © 2020 by Thorsten von Eicken.
 
 from time import monotonic
 def ticks_ms(): return monotonic() * 1000

@@ -1,4 +1,5 @@
 # Board configuration so other modules don't need to be too board-specific
+# Copyright © 2020 by Thorsten von Eicken.
 import machine
 
 # Pull-in the specifics of the board from `board_config`. That should be the only file that is

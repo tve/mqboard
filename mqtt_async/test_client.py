@@ -1,4 +1,5 @@
 # Test MQTTClient in mqtt_async.py
+# Copyright © 2020 by Thorsten von Eicken.
 # This test runs in cpython using pytest. It stubs/mocks MQTTProto so the test can focus exclusively
 # on the client functionality, such as retransmissions.
 # To produce code coverage with annotated html report: pytest --cov=mqtt_async --cov-report=html

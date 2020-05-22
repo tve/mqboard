@@ -1,4 +1,5 @@
 # Test MQTTProto in mqtt_as.py
+# Copyright © 2020 by Thorsten von Eicken.
 # This test runs under pytest on linux: pytest --cov=mqtt_as --cov-report=html
 # It also runs in micropython: pyboard test_proto.py
 

@@ -1,6 +1,6 @@
-#! /usr/bin/python
+#! /usr/bin/env python3
 # MQBoard - Command Line Interface
-# Copyright (c) 2020 by Thorsten von Eicken
+# Copyright © 2020 by Thorsten von Eicken.
 
 import os, sys, posixpath, random, base64, logging, struct, time, hashlib
 import click
