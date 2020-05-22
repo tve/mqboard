@@ -2,87 +2,85 @@
 import machine
 
 # Pull-in the specifics of the board from `board_config`. That should be the only file that is
-# customized for each board. It also contains passwords and keys and should thus not be checked into
-# version control. There should be a `board_confgi_tmpl.py` file around to use as template.
-# board_config needs to define:
-# - kind: board type name, like huzzah32, lolin-d32, ... used to pick the pin for the LED, etc
-# - location: short name for this board used in mqtt topics
-# - wifi_ssid: SSID to connect to
-# - wifi_pass: password
-# - mqtt_server: IP address or hostname
+# customized for each board. It also contains passwords and keys and should thus not be checked
+# into public version control.
+# There is a `board_config_tmpl.py` file around to use as template.
 from board_config import *
 
 # ===== LED stuff and battery voltage stuff
-# Defines `led(on_off)` and `get_battery_voltage()`
-# act_led: network activity LED, typ. blue, turn on with act_led(True)
-# fail_led: failure/error, type red, turn on with fail_led(True)
-# For demos ensure the same calling convention for LEDs on all platforms.
 
-led = False
-bat_volt_pin = None
+act_led = False  # network activity LED, typ. blue, turn on with act_led(True)
+fail_led = False  # failure/error, type red, turn on with fail_led(True)
+bat_volt_pin = None  # voltage divider pin to measure battery
 bat_fct = 2  # voltage divider factor
 
-if kind == "tve-bare":
-    # bare esp32-wroom module with LED across IO23 and gnd
-    lpin = machine.Pin(23, machine.Pin.OUT, None, value=0)
-    led = lambda v: lpin(v)
-    act_led, fail_led = (led, led)
-elif kind == "huzzah32":
-    # Adafruit Huzzah32 feather
-    lpin = machine.Pin(13, machine.Pin.OUT, None, value=0)
-    led = lambda v: lpin(v)
-    fail_led = led
-elif kind == "lolin-d32":
-    # Wemos Lolin D-32
-    lpin = machine.Pin(5, machine.Pin.OUT, None, value=1)
-    led = lambda v: lpin(not v)
-    bat_volt_pin = machine.ADC(machine.Pin(35))
-    bat_volt_pin.atten(machine.ADC.ATTN_11DB)
-    act_led, fail_led = (led, led)
-elif kind == "nodemcu":
-    # NodeMCU
-    lpin = machine.Pin(2, machine.Pin.OUT, None, value=0)
-    led = lambda v: lpin(v)
-    act_led, fail_led = (led, led)
-elif kind == "esp32thing":
-    # Sparkfun ESP32 Thing
-    lpin = machine.Pin(5, machine.Pin.OUT, None, value=0)
-    led = lambda v: lpin(v)
-    act_led, fail_led = (led, led)
-elif kind == "ezsbc":
-    # EzSBC
-    lpin = machine.Pin(19, machine.Pin.OUT, None, value=1)
-    blue_led = lambda v: lpin(not v)
-    lpin = machine.Pin(16, machine.Pin.OUT, None, value=1)
-    red_led = lambda v: lpin(not v)
-    # bat_volt_pin = machine.ADC(machine.Pin(35))
-    # bat_volt_pin.atten(machine.ADC.ATTN_11DB)
-    act_led, fail_led = (blue_led, red_led)
-elif kind == "tinypico":
-    # TinyPICO has an RGB LED so we use the red channel for WiFi and the blue
-    # channel for message rx
-    from machine import SPI, Pin
-    import tinypico as TinyPICO
-    from dotstar import DotStar
 
-    spi = SPI(
-        sck=Pin(TinyPICO.DOTSTAR_CLK), mosi=Pin(TinyPICO.DOTSTAR_DATA), miso=Pin(TinyPICO.SPI_MISO)
-    )
-    dotstar = DotStar(spi, 1, brightness=0.5)  # Just one DotStar, half brightness
-    TinyPICO.set_dotstar_power(True)
+def define_led():
+    global act_led, fail_led, bat_volt_pin, bat_fct
+    if kind == "tve-bare":
+        # bare esp32-wroom module with LED across IO23 and gnd
+        lpin = machine.Pin(23, machine.Pin.OUT, None, value=0)
+        led = lambda v: lpin(v)
+        act_led, fail_led = (led, led)
+    elif kind == "huzzah32":
+        # Adafruit Huzzah32 feather
+        lpin = machine.Pin(13, machine.Pin.OUT, None, value=0)
+        led = lambda v: lpin(v)
+        fail_led = led
+    elif kind == "lolin-d32":
+        # Wemos Lolin D-32
+        lpin = machine.Pin(5, machine.Pin.OUT, None, value=1)
+        led = lambda v: lpin(not v)
+        bat_volt_pin = machine.ADC(machine.Pin(35))
+        bat_volt_pin.atten(machine.ADC.ATTN_11DB)
+        act_led, fail_led = (led, led)
+    elif kind == "nodemcu":
+        # NodeMCU
+        lpin = machine.Pin(2, machine.Pin.OUT, None, value=0)
+        led = lambda v: lpin(v)
+        act_led, fail_led = (led, led)
+    elif kind == "esp32thing":
+        # Sparkfun ESP32 Thing
+        lpin = machine.Pin(5, machine.Pin.OUT, None, value=0)
+        led = lambda v: lpin(v)
+        act_led, fail_led = (led, led)
+    elif kind == "ezsbc":
+        # EzSBC
+        lpin = machine.Pin(19, machine.Pin.OUT, None, value=1)
+        act_led = lambda v: lpin(not v)
+        lpin = machine.Pin(16, machine.Pin.OUT, None, value=1)
+        fail_led = lambda v: lpin(not v)
+    elif kind == "tinypico":
+        # TinyPICO has an RGB LED so we use the red channel for WiFi and the blue
+        # channel for message rx
+        from machine import SPI, Pin
+        import tinypico as TinyPICO
+        from dotstar import DotStar
 
-    color = [255, 0, 0]
+        spi = SPI(
+            sck=Pin(TinyPICO.DOTSTAR_CLK),
+            mosi=Pin(TinyPICO.DOTSTAR_DATA),
+            miso=Pin(TinyPICO.SPI_MISO),
+        )
+        dotstar = DotStar(spi, 1, brightness=0.5)  # Just one DotStar, half brightness
+        TinyPICO.set_dotstar_power(True)
 
-    def set_red(v):
-        color[0] = 255 if v else 0
-        dotstar[0] = color
+        color = [255, 0, 0]
 
-    def set_blue(v):
-        color[2] = 255 if v else 0
-        dotstar[0] = color
+        def set_red(v):
+            color[0] = 255 if v else 0
+            dotstar[0] = color
 
-    fail_led = set_red
-    act_led = set_blue
+        def set_blue(v):
+            color[2] = 255 if v else 0
+            dotstar[0] = color
+
+        fail_led = set_red
+        act_led = set_blue
+
+
+define_led()
+del define_led  # GC the function
 
 
 def get_battery_voltage():
@@ -109,15 +107,3 @@ def connect_wifi():
     while not wlan.isconnected():
         pass
     print("Connected!")
-
-
-# if platform == 'pyboard':
-#    from pyb import LED
-#    def ledfunc(led, init):
-#        led = led
-#        led.on() if init else led.off()
-#        def func(v):
-#            led.on() if v else led.off()
-#        return func
-#    wifi_led = ledfunc(LED(1), 1)
-#    blue_led = ledfunc(LED(3), 0)
