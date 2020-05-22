@@ -1,8 +1,8 @@
 # MicroPython MQTT Framework
 
-This repository contains a Framework for using MQTT with asyncio on MicroPython boards,
+This repository contains a micro-framework for using MQTT with asyncio on MicroPython boards,
 primarily on the ESP32. The `mqtt_async` library can be used stand-alone as a robust
-MQTT client library designed for asyncio. The rest of this repo forms a mini framework
+MQTT client library designed for asyncio. The rest of this repo forms a micro-framework
 designed to operate MQTT-connected nodes remotely with great flexibility and robustness.
 
 ## Goals and features
@@ -30,6 +30,19 @@ The above goals make the following features desirable:
   comes up and can be accessed via MQTT even if the application misbehaves.
 
 Currently all these features except for the crash log to local storage are implemented.
+
+### Open issues
+
+The main open (high-level) issue is low power operation. Right now power is not taken into
+consideration and, in particular, the start-up time is not optimized to enable periodic wake-up
+operation on batteries.
+
+OTA firmware upgrades and safe mode are currently not integrated, which means that an OTA upgrade
+requires more care and thought than it should.
+
+The `mqtt_async` implementation tries to be compatible with Peter Hinch's `mqtt_as` and it's time to
+depart from that so the functionality in `board/mqtt.py` can be integrated directly and so the
+management of Wifi can be decoupled.
 
 ## Contents
 
@@ -59,38 +72,39 @@ using CPython but the majority are actually executed on an ESP32 using gohci.
 
 ## Getting started
 
+TODO: it would be nice to have a sample application...
+
 ### Prerequisites
 
 - MQTT broker, preferably local, preferably supporting TLS (MQTTS), preferably using public
   certificante, e.g. from Let's Encrypt.
 - ESP32 pre-loaded with a version of MicroPython supporting the "new asyncio", i.e. post-v1.12, 
   preferably TvE's fork (https://github.com/tve/micropython)
+- The Python click and paho-mqtt packages: `pip install click paho-mqtt`.
 
 ## First steps
 
 - in `./board` copy `board_config_tmpl.py` to `board_config.tmpl` and update the values to suit your
-  environment
+  environment (the values you must update are `wifi_ssid`, `wifi_pass`, and the `mqtt` dict).
 - plug your esp32 into USB
 - run `./load.sh` to load all the necessary files
-- try a repl command: `./mqboard/mqboard  -s <your_broker> -p 1883/8883 -t esp32/test/mqb eval
-  '2+3'`:
+- connect using a terminal app (be sure it honors ansi color escape codes), for example
+  `miniterm2.py --filter direct /dev/ttyUSB0 115200`, and reset the board (ctrl-t, ctrl-d two times
+  in miniterm, ctrl-a, ctrl-p in picocom)
+- you will see the board come up in normal mode, MicroPython start and throw an exception in
+  boot.py because no app is loaded/configured, and then immediately reboot into safe mode
+- once in safe mode, it will connect to the broker and wait for incoming commands: you will see some
+  50-odd log messages with "mqrepl: Subscribed to test/esp32/mqb/cmd/#" near the end
+- preferably in another terminal window/pane/tab try a repl command:
+  `./mqboard/mqboard  -s <your_broker> -p <1883 or 8883> -t test/esp32/mqrepl/mqb eval '2+3'`
+  (use the topic from the subscribed-to log message up to the "/cmd#"):
 ```
-    DEBUG:mqboard:Connecting to core.voneicken.com:1883
-    DEBUG:mqboard:Connected! Subscribing to esp32/test/mqb/reply/out/_PIFFncP
-    INFO:mqboard:Pub esp32/test/mqb/cmd/eval/_PIFFncP #0 last=1 len=5
-    DEBUG:mqboard:done publishing
-    DEBUG:mqboard:Received reply on topic 'esp32/test/mqb/reply/out/_PIFFncP' with QoS 1
+    INFO:mqboard:Pub esp32/test/mqb/cmd/eval/mOnqRI3b #0 last=1 len=5
     5
-    INFO:mqboard:0.006kB in 0.126s -> 0.046kB/s
+    INFO:mqboard:0.006kB in 0.130s -> 0.045kB/s
 ```
-  (The eval result is the line with the "5", mqboard needs to turn those debug log statement off
-  by default...)
-- tip: if nothing happens, verify which topic the mqrepl subscribes to:
-  - use miniterm.py or equivalent to watch the esp32 console and reset the esp32 (ctrl-t, ctrl-d two
-    times in miniterm)
-  - look for a line like `mqrepl: Subscribed to b'esp32/test/mqb/cmd/#'`, it's typically the last
-    line printed
-  - use the part before `/cmd/` in mqboard's `-t` argument
+  The eval result is the line with the "5".
+- to see an actual app check out https://github.com/tve/mpy-weather
 
 For help, please post on https://forum.micropython.org 
 
