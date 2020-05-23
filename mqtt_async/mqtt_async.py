@@ -166,6 +166,7 @@ class MQTTProto:
         self._sock = None
         self._lock = asyncio.Lock()
         self.last_ack = 0  # last ACK received from broker
+        self._read_buf = b""
 
     # connect initiates a connection to the broker at addr.
     # Addr should be the result of a gethostbyname (typ. an ip-address and port tuple).
@@ -275,13 +276,15 @@ class MQTTProto:
                 self._read_buf += got
                 missing = n - len(self._read_buf)
             # got enough?
-            if missing <= 0:
+            if missing == 0:
+                res = self._read_buf
+                self._read_buf = b""
+                return res
+            if missing < 0:
                 res = self._read_buf[:n]
                 self._read_buf = self._read_buf[n:]
                 return res
         raise OSError(-1, CONN_CLOSED)
-
-    _read_buf = b""
 
     # _as_write writes n bytes to the socket in a blocking manner using asyncio. On error or EOF
     # it raises an OSError.
