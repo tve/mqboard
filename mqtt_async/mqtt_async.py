@@ -595,7 +595,6 @@ class MQTTClient:
             keepalive=self._c["keepalive"],
             lw=self._c["will"],
         )  # raises on error
-        self._proto = proto
         # update state
         if self._state == 0:
             self._state = 1
@@ -603,12 +602,18 @@ class MQTTClient:
             # disconnect and reconnect with clean=False so the broker doesn't drop all the state
             # when we get our first disconnect due to network issues
             if clean:
-                await self._proto.disconnect()
-                self._proto = None
+                await proto.disconnect()
                 return await self.connect()
         elif self._state > 1:
             await self.disconnect()  # whoops, someone called disconnect() while we were connecting
             raise OSError(-1, "disconnect while connecting")
+        # First thing, retransmit if there is an async packet outstanding and it has not been acked
+        m = self._prev_pub
+        if m is not None and m.pid in self._unacked_pids:
+            log.warning("repub->%s qos=%d pid=%s", m.topic, m.qos, m.pid)
+            self._prev_pub_proto = proto
+            await proto.publish(m, dup=1)
+        self._proto = proto
         # If we get here without error broker/LAN must be up.
         loop = asyncio.get_event_loop()
         # Start background coroutines that run until the user calls disconnect
@@ -654,19 +659,20 @@ class MQTTClient:
     def _got_puback(self, pid):
         if pid in self._unacked_pids:
             self._unacked_pids[pid][0].set()
+            del self._unacked_pids[pid]
 
     def _got_pingresp(self):
         self._got_puback(PING_PID)
 
-    # _got_suback handles a suback by checking that the desired qos level was acked and
-    # either removing the pid from the unacked set or flagging it with an OSError.
+    # _got_suback handles a suback by placing the response into the _unacked_pid list
+    # _await_pid will have to delete the item from the list
     def _got_suback(self, pid, actual_qos):
         if pid in self._unacked_pids:
             self._unacked_pids[pid][1] = actual_qos
             self._unacked_pids[pid][0].set()
 
     # _await_pid waits until the broker ACKs a pub or sub message, or it times out.
-    # It returns the second element of the self._unacked_pids list (may be None).
+    # If the element of the self._unacked_pids list still exists, it returns the second element.
     async def _await_pid(self, pid):
         if pid not in self._unacked_pids:
             return None
@@ -676,9 +682,7 @@ class MQTTClient:
                 await asyncio.wait_for(self._unacked_pids[pid][0].wait(), self._c["response_time"])
         except asyncio.TimeoutError:
             raise OSError(-1, CONN_TIMEOUT)
-        # return second list element -- there is a race condition in that multiple coros may be
-        # waiting here, but only the first will get the return value; that's OK because only
-        # subscribe actually needs the value and it doesn't have a race condition
+        # return second list element -- this only happens for subscribe acks
         if pid in self._unacked_pids:
             ret = self._unacked_pids[pid][1]
             del self._unacked_pids[pid]
@@ -793,71 +797,43 @@ class MQTTClient:
                     raise OSError(-1, "subscribe failed: " + e.args[1])
             await self._reconnect(proto, "sub")
 
-    # publish with support for async, meaning that the packet is published but an ack (if qos 1) is
-    # not awaited. Instead the ack is awaited after the next packet is published.
-    # Algorithm:
-    # 1. If prev packet was async:
-    #   a. if got ACK go to step 2
-    #   b. if still on same socket, go to step 2
-    #   c. (no ACK and new socket) retransmit prev packet
-    # 2. Transmit new packet
-    # 3. If prev packet was async:
-    #   a. wait for ACK with timeout, if got ACK go to step 4
-    #   b. reconnect, retransmit prev packet, go to step 2
-    # 3. If new packet is QoS=0 or async, return success
-    # 4. (new packet is QoS=1 and sync) wait for ACK
+    # publish with support for async. For QoS=0 this means publish and done. For QoS=1&sync=True
+    # this means publish and wait for ack. For QoS=1&sync=False this means publish, then wait
+    # for the _prev_pub slot to be available, e.g. by waiting for an ack.
     async def publish(self, topic, msg, retain=False, qos=0, sync=True):
         dup = 0
         pid = self._newpid() if qos else None
         message = MQTTMessage(topic, msg, retain, qos, pid)
-        if qos:
-            self._unacked_pids[pid] = [asyncio.Event(), None]
         while True:
-            log.debug("pub begin for pid=%s", pid)
+            # print("pub begin for pid=%s" % pid)
             # first we need a connection
             while self._proto is None:
                 await asyncio.sleep(_CONN_DELAY)
-            # if there is an async packet outstanding and it has not been acked, and a new connection
-            # has been established then begin by retransmitting that packet.
             proto = self._proto
-            if (
-                self._prev_pub is not None
-                and pid in self._unacked_pids
-                and self._prev_pub_proto != proto
-            ):
-                m = self._prev_pub
-                log.warning("repub->%s qos=%d pid=%s", m.topic, m.qos, m.pid)
-                self._prev_pub_proto = proto
-                try:
-                    await proto.publish(m, dup=1)
-                except OSError as e:
-                    await self._reconnect(proto, "pub")
-                    continue
-            # now publish the new packet on the same connection
-            log.debug("pub->%s qos=%d pid=%s", message.topic, message.qos, message.pid)
             try:
+                # now publish the new packet on the same connection
+                # print("pub->%s qos=%d pid=%s" % (message.topic, message.qos, message.pid))
                 await proto.publish(message, dup)
-            except OSError as e:
-                await self._reconnect(proto, "pub")
-                continue
-            # if there is an async packet outstanding wait for an ack
-            if self._prev_pub is not None:
-                try:
-                    await self._await_pid(self._prev_pub.pid)
-                except OSError as e:
-                    await self._reconnect(proto, "pub")
-                    continue
-                self._prev_pub = None
-                self._prev_pub_proto = None
-            # new packet one becomes prev if qos>0 and async, or gotta wait for new one's ack if sync
-            if qos == 0:
+                if qos == 0:
+                    return
+                # the following is atomic with the above publish
+                self._unacked_pids[pid] = [asyncio.Event(), None]
+                if not sync:
+                    # async packet, need to wait 'til self._prev_pub becomes available
+                    while self._prev_pub is not None:  # only False on the first async pub...
+                        ppid = self._prev_pub.pid
+                        if ppid is not None:
+                            # print("pub pid=%d awaiting prev_pid=%d" % (pid, ppid))
+                            await self._await_pid(ppid)
+                        if self._prev_pub.pid == ppid:
+                            # no-one has snatched the slot yet: our turn!
+                            # print("pub pid=%d is now prev" % pid)
+                            break
+                    self._prev_pub = message
+                    self._prev_pub_proto = proto
+                else:
+                    # sync packet
+                    await self._await_pid(message.pid)
                 return
-            if not sync:
-                self._prev_pub = message
-                self._prev_pub_proto = proto
-                return
-            try:
-                await self._await_pid(message.pid)
-                return
-            except OSError as e:
+            except OSError:
                 await self._reconnect(proto, "pub")
