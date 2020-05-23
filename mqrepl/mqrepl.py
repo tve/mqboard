@@ -80,7 +80,6 @@ class OTA:
         check_sha = check_sha.encode()
         if calc_sha != check_sha:
             raise ValueError("SHA mismatch calc:{} check={}".format(calc_sha, check_sha))
-        print("set_boot")
         self.part.set_boot()
         return "OK"
 
@@ -292,15 +291,20 @@ class MQRepl:
             last = (msg[0] & 0x80) != 0
             msg = memoryview(msg)[2:]
             # dispatch to command function
-            log.info(
-                "Dispatch %s, msglen=%d seq=%d last=%s id=%s dup=%s",
-                cmd,
-                len(msg),
-                seq,
-                last,
-                ident,
-                dup,
-            )
+            # logging: if something is being streamed to us and we try to send a log message back
+            # for each inbound message we end up loosing log messages because we can't get them out
+            # as fast as new ones arrive. This always happens during OTA. Hence we stop logging
+            # every message...
+            if seq < 4 or last or seq & 0xf == 0:
+                log.info(
+                    "Dispatch %s, msglen=%d seq=%d last=%s id=%s dup=%s",
+                    cmd,
+                    len(msg),
+                    seq,
+                    last,
+                    ident,
+                    dup,
+                )
             try:
                 t0 = time.ticks_ms()
                 resp = getattr(self, fn)(name, msg, seq, last)
