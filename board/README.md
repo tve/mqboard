@@ -93,27 +93,27 @@ peripheral pins in projects so the same code can work e.g. on a prototype board 
 
 The safe mode feature is rather elaborate and perhaps cumbersome at times. But when a board stops
 responding and comes back in safe mode it's a life saver! The concept of safe mode is that
-early in the boot process (in `main.py`) a decision is made whether it's safe to boot normally or
+early in the boot process (in `boot.py`) a decision is made whether it's safe to boot normally or
 whether to boot into safe mode. This decision is made based on a value in RTC memory, which doesn't
 get erased when the system crashes or is reset by the watchdog timer. Currently there are three
 cases distinguished:
 - RTC memory got wiped, this is probably a cold boot (power-up), hope for the best and boot into
   normal mode.
 - RTC memory has the magic value, replace that value with something bogus and boot into normal
-  mode (something will need to write the magic value again so the next reset again goes to
-  normal mode).
+  mode (something will need to write the magic value so the next reset goes to normal mode).
 - RTC memory has a bogus value, boot into safe mode.
 
 The key is when to write the magic value into RTC memory: it should be something that ensures that
 the board has been functional for a while and was available for remote admin. The idea being that as
-long as an admin can intervene and update software on the board it's OK to boot into normal mode.
+long as an admin can intervene and update software on the board it's OK to boot into or stay in
+normal mode.
 
 One implementation of all this is provided by `watchdog.py` in the `mqrepl` directory.
 
-The next question is what safe mode consists of. The decision made here is that it is simply
-a different `sys.path`, specifically, `["/safemode", ""]`, which means that all python modules
-after `main.py` come from the safemode directory (having "" in the path is
-required, and `main.py` must be in the root directory).
+The next question is what safe mode consists of. The decision made here is that it is
+a different `cwd` and `sys.path`, specifically, `os.getcwd() == "/safemode"` and
+`sys.path == ["/safemode", ""]`, which means that all python files and modules after `boot.py`
+come from the safemode directory (having "" in the path is required).
 
 What this means is that the safemode directory can have its own version of the MQTT library, the
 repl, logging, and the board config. It's not that these versions are different per-se, it's just
@@ -122,14 +122,17 @@ that they can be loaded once and then left alone while the normal versions (typ.
 reachable and the problem can be fixed.
 
 There are a couple of issues with safemode:
-- having two copies of stuff causes its own set of mistakes, it's easy to forget to eventually
+- Changing CWD is really painful and leads to easy mistakes when inspecting the filesystem
+  interactively. One has to use absolute paths when updating the failed app, for example.
+  Unfortunately it's the only way to load `main.py` from `/safemode`.
+- Having two copies of stuff causes its own set of mistakes, it's easy to forget to eventually
   update the safemode versions after a bug fix or a password change
-- there's only one version of `main.py`, but hopefully it doesn't get changed often
-- the current `sys.path` in safe mode includes the root directory, perhaps it should chdir to
+- There's only one version of `main.py`, but hopefully it doesn't get changed often
+- The current `sys.path` in safe mode includes the root directory, perhaps it should chdir to
   `/safemode`
-- if a bug causes a hard reset (for example something causing a brief short circuit) then
+- If a bug causes a hard reset (for example something causing a brief short circuit) then
   safe mode will not be triggered
-- the safemode is completely decoupled from and oblivious to any OTA updates of the MicroPython
+- The safemode is completely decoupled from and oblivious to any OTA updates of the MicroPython
   firmware, so new firmware ends up using the same files, which means that at least the files for
   safemode need to be compatible with both firmware versions; also, the "automatic rollback" feature
   of the firmware update is decoupled from safemode (there clearly is room for improvement here...)
@@ -140,8 +143,7 @@ Note: on the ESP32 the safe mode relies on a fix of RTC memory!
 
 ## Component launcher in `main.py` and MQTT dispatcher in `mqtt.py`
 
-After dealing with safemode and starting the watchdog,
-the role of `main.py` is to start all the functional components indicated in the `board_config.py`.
+The role of `main.py` is to start all the functional components indicated in the `board_config.py`.
 It does this by looping over the python module names in `board.modules` (`board.py` has a `import *
 from board_config`) and loading each one of the modules in turn. For each of the modules it calls a
 `start(mqtt, config)` function passing it a handle onto the MQTT dispatcher and onto a
@@ -205,8 +207,9 @@ The logging has a few quirks:
   boot phase and one thereafter. See the `board_config_tmpl.py` file for details.
 
 A very important note is that stdout, i.e., random stuff printed to the serial console is not
-captured for sending over MQTT! The reason is that it's a bit messy. The mqrepl directory may
-still have vestiges of an attempt in the abandoned `mqlogger.py` which could certainly be revived.
+captured for sending over MQTT! The reason is that it's a bit messy and has unintended
+side-effects. The mqrepl directory may still have vestiges of an attempt in the abandoned
+`mqlogger.py` which could certainly be revived.
 
 What happened is that the somewaht frustrated author decided to try without hooking stdout and
 hasn't looked back since.
@@ -219,16 +222,14 @@ In recap, the boot process is roughly as follows:
 
 The overall boot process is as follows:
 
-1. `boot.py` is always loaded by MicroPython. It's virtually useless on the ESP32, all it can
-   do is mess something up thereafter preventing pyboard from entering the raw repl...
-   It's recommended to leave it empty.
-2. `main.py` is then loaded by MicroPython unless the raw REPL is being entered (e.g. when using
-   `pyboard`) or the user hits ctrl-C early on. It:
+1. `boot.py` is always loaded by MicroPython.
    1. decides on normal boot vs safe mode
    2. starts the watchdog with an initial 70 second timeout
-   3. configures logging to buffer messages for sending later
-   4. logs some boot info, such as partition and reset cause
-   5. prints a hello-world message with firmware and board info
-   6. configures the `sys.path` according to config
-   7. loads the modules listed in `board.modules` and calls their start functions
-   8. starts the asyncio loop
+2. `main.py` is then loaded by MicroPython unless the raw REPL is being entered (e.g. when using
+   `pyboard`) or the user hits ctrl-C early on. It:
+   1. configures logging to buffer messages for sending later
+   2. logs some boot info, such as partition and reset cause
+   3. prints a hello-world message with firmware and board info
+   4. configures the `sys.path` according to config
+   5. loads the modules listed in `board.modules` and calls their start functions
+   6. starts the asyncio loop
