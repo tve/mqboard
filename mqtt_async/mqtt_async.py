@@ -11,10 +11,9 @@
 # The imports below are a little tricky in order to support operation under Micropython as well as
 # Linux CPython. The latter is used for tests.
 
-import gc, socket, struct
+import socket, struct
 from binascii import hexlify
 from errno import EINPROGRESS
-from sys import platform
 
 try:
     # imports used with Micropython
@@ -50,7 +49,6 @@ try:
     import logging
 
     log = logging.getLogger(__name__)
-    # log.setLevel(logging.DEBUG)
 except:
 
     class Logger:  # please upip.install('logging')
@@ -263,7 +261,6 @@ class MQTTProto:
     # _read_msg does a good number of very short reads.
     async def _as_read(self, n):
         # Note: uasyncio.Stream.read returns short reads
-        t0 = ticks_ms()
         while self._sock:
             # read missing amt
             missing = n - len(self._read_buf)
@@ -413,7 +410,7 @@ class MQTTProto:
         res = await self._as_read(1)
         # We got something, dispatch based on message type
         op = res[0]
-        log.debug("read_msg op=%x", op)
+        #log.debug("read_msg op=%x", op)
         if op == 0xD0:  # PINGRESP
             await self._as_read(1)
             self.last_ack = ticks_ms()
@@ -437,7 +434,7 @@ class MQTTProto:
             topic_len = await self._as_read(2)
             topic_len = (topic_len[0] << 8) | topic_len[1]
             topic = await self._as_read(topic_len)
-            log.debug("topic:%s", topic)
+            #log.debug("topic:%s", topic)
             sz -= topic_len + 2
             retained = op & 0x1
             dup = op & 0x8
@@ -447,7 +444,7 @@ class MQTTProto:
                 pid = await self._as_read(2)
                 pid = pid[0] << 8 | pid[1]
                 sz -= 2
-            log.debug("pid:%s sz=%d", pid, sz)
+            #log.debug("pid:%s sz=%d", pid, sz)
             if sz < 0:
                 raise OSError(-1, PROTO_ERROR, "pub sz", sz)
             else:
