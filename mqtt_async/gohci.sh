@@ -11,7 +11,7 @@ echo "---- checking pyboard serial ----"
 pyboard.py -c "print('hello world')" || true
 
 echo "----- run test_proto on esp32 -----"
-pyboard.py -f cp mqtt_async.py :
+pyboard.py -f cp mqtt_async.py :/safemode/
 pyboard.py -c 'connect_wifi()'
 sleep 1
 timeout 1m pyboard.py test_proto.py

@@ -10,15 +10,25 @@ if ! pyboard.py rm_rf.py; then
     exit 1
 fi
 
-echo "----- uploading board files -----"
-pyboard.py -f cp board.py boot.py logging.py main.py mqtt.py :
+echo "----- loading board files -----"
+../load.sh
+#pyboard.py -f cp boot.py :/
+#pyboard.py -f mkdir :/safemode
+#pyboard.py -f cp board.py logging.py main.py mqtt.py :/safemode/
+#pyboard.py -f cp $board_config :/safemode/board_config.py
 board_config=$HOME/board_config_esp32.py
-[ -f $board_config ] || board_config=board_config.py # for local testing
-pyboard.py -f cp $board_config :board_config.py
+[ -f $board_config ] && pyboard -f cp $board_config :/safemode/board_config.py # for local testing
 # now check they're all there
-out=$(pyboard.py -f ls)
-if [[ "$out" != *board.py*board_config.py*boot.py*logging.py*main.py* ]]; then
-	echo OOPS, got: "$out"
+out=$(pyboard.py -f ls /)
+exp='*boot.py*safemode*'
+if [[ "$out" != $exp ]]; then
+	echo OOPS, expected $exp, got: "$out"
+	exit 1
+fi
+out=$(pyboard.py -f ls /safemode/)
+exp='*board.py*board_config.py*logging.py*main.py*mqrepl.py*mqtt_async.py*watchdog*'
+if [[ "$out" != $exp ]]; then
+	echo OOPS, expected $exp, got: "$out"
 	exit 1
 fi
 

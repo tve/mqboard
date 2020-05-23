@@ -11,4 +11,4 @@ def rmdir(dir):
     if dir != "/" and dir != "":
         print("rmdir", dir)
         uos.rmdir(dir)
-rmdir("") # empty string is same as '/' and prevents issues with '//' in paths
+rmdir("/")

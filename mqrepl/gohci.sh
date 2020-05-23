@@ -8,7 +8,7 @@ echo "---- checking pyboard serial ----"
 pyboard.py -c "print('hello world')" || true
 
 echo "---- installing files ----"
-pyboard.py -f cp mqrepl.py watchdog.py :
+pyboard.py -f cp mqrepl.py watchdog.py :/safemode/
 
 echo "---- running test ----"
 #cat /tmp/foo
