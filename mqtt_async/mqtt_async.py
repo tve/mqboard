@@ -625,7 +625,7 @@ class MQTTClient:
         # Notify app that we're connected and ready to roll
         if self._c["connect_coro"] is not None:
             loop.create_task(self._c["connect_coro"](self))
-            self._c["connect_coro"] = None # FIXME: nasty...
+            self._c["connect_coro"] = None  # FIXME: nasty...
         # Notify app that broker is connected
         if self._c["wifi_coro"] is not None:
             loop.create_task(self._c["wifi_coro"](True))  # Notify app that Wifi is up
@@ -722,7 +722,7 @@ class MQTTClient:
                 if sleep_time < rt_ms / 4:  # avoid sending pings too frequently
                     sleep_time = rt_ms / 4
                 await asyncio.sleep_ms(sleep_time)
-        except Exception as e:
+        except Exception:
             await self._reconnect(proto, "keepalive")
 
     # _reconnect schedules a reconnection if not underway.
