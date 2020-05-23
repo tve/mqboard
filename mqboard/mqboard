@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.WARNING)
 log = logging.getLogger("mqboard")
 log.setLevel(logging.INFO)
 
-BUFLEN = 2800  # "optimal" buffer size to make mqtt message fit into TCP segment
+BUFLEN = 1400  # "optimal" buffer size to make mqtt message fit into TCP segment
 
 
 def ticks():
