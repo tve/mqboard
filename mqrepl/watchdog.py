@@ -84,7 +84,7 @@ def start(mqtt, config):
     import __main__
     safemode = __main__.safemode
     revert = config.get("revert", True)
-    allok = config.get("allok", 300)
+    allok = config.get("allok", 300) * 1000
     __main__.GLOBALS()["watchdog"] = sys.modules["watchdog"]
     # Feeder starts once we're connected
     mqtt.on_init(init(mqtt.client, config["prefix"]))
