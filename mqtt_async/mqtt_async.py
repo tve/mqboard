@@ -104,8 +104,8 @@ config = {
     "clean": True,
     "will": None,  # last will message, must be MQTTMessage
     "subs_cb": lambda *_: None,  # callback when message arrives for a subscription
-    "wifi_coro": None,  # notification when wifi connects/disconnects
-    "connect_coro": None,  # notification when a MQTT connection starts
+    "wifi_coro": None,  # notification when MQTT connects/disconnects
+    "connect_coro": None,  # notification when MQTT first becomes ready
     "ssid": None,
     "wifi_pw": None,
     # The following are not currently supported:

@@ -11,14 +11,12 @@ Some of the special features of this library:
 - Supports QoS 0 and QoS 1 with automatic retries when sending QoS 1 messages.
 - Automatic keep-alive messages and disconnect/reconnect when the connection to the broker ceases to
   function.
+- Supports TLS.
 - Disconnect/reconnect first acts at the TCP connection level and only when unsuccessful moves
   to reconnect Wifi.
 - Publishing messages at QoS 1 can be asynchronous such that the application can proceed before an
   ACK is received from the broker.
 - Support starting with a clean session or resuming from a previous session.
-
-Features that need a little more work:
-- Support TLS.
 
 `mqtt_async` is published under an MIT license.
 
@@ -29,20 +27,24 @@ merge of [PR 5796](https://github.com/micropython/micropython/pull/5796) on Marc
 terms of MP releases this will mean V1.13 or greater. I highly recommend building MP from source
 yourself, but there is a download available, see below.
 
+Using TLS **requires** a number of PRs that are in the pipeline. Your best bet at this point
+is to use the author's MP firmware at https://github.com/tve/micropython (in the default `tve`
+branch). (The PRs no longer merge cleanly due to the ever-evolving MP master HEAD...)
+
 ### Installation
 
-You can install the library using upip as follows:
+You can:
+- copy the `mqtt_async.py` file to your board, e.g., `pyboard.py -f cp mqtt_async.py :`
+- cross-compile the library to an mpy file and upload that
+- skip `micropython-logging` as there is a fall-back
+
+An old version is available via upip, it's useless right now:
 
 ```
 import upip
 upip.install('micropython-mqtt-async')
 upip.install('micropython-logging')
 ```
-
-Alternatively, you can:
-- copy the `mqtt_async.py` file to your board, e.g., `pyboard.py -f cp mqtt_async.py :`
-- cross-compile the library to an mpy file and upload that
-- skip `micropython-logging` as there is a fall-back
 
 ### Hello World
 
@@ -92,17 +94,19 @@ publish 2
 
 Next, check out the API docs further down...
 
-### MicroPython download
+## Open issues and planned changes
 
-A version of MP for the esp32 using ESP-IDFv4 with the new uasyncio built-in can be download from
-http://micropython.org/resources/firmware/esp32-idf4-20200326-v1.12-307-gad004db66.bin
-(or as backup
-https://s3.amazonaws.com/s3.voneicken.com/micropython-esp32-master-ad004db.bin).
-To load it onto your board use something like:
-```
-esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 460800 write_flash -z --flash_mode dio \
---flash_freq 40m 0x1000 esp32-idf4-20200326-v1.12-307-gad004db66.bin
-```
+- The Wifi management will be split out from this library. This will simplify the config, will
+  make it more obvious to use the library without it messing with Wifi, and to load a different
+  wifi manager for each platform. At the end of the day the only interaction between MQTT and
+  wifi is (a) a notification "hey wifi, are you sure you're still connected? Maybe you should
+  bounce the network!" and (b) a notification "hey MQTT, try to connect again!".
+- The callbacks have poor names and should be lists, the plan is to merge `../mqboard/mqtt.py`
+  into `mqtt_async.py`. Except that things will change further by splitting Wifi management off.
+- The error handling needs tuning. Overall the principle is to let exceptions propagate up to 
+  the caller. In some cases they're caught in order to print troubleshooting info and re-raised.
+  In particular, when out-of-memory hits there may be smart things that could be done, for example,
+  dropping incoming messages, although if they use QoS=1 they will come again...
 
 ## Implementation Specifics
 
@@ -112,16 +116,22 @@ This library has been tested with Micropython compiled with ESP-IDFv4 on an esp3
 recommended configuration.
 Using ESP-IDFv3 has not been tested.
 
-This library contains code to handle the esp8266 but it has not been tested, except to determine
-that the library has to be frozen into the firmware in order to be usable. (This is the same
-situation as with `mqtt_as`.)  The author does not expect to test with the esp8266 but will
-accept PRs to fix any issues.
+The source code contains code to handle the esp8266 but it has not been tested and has been
+commented out.  The library has to be frozen into the firmware in order to be usable and even
+then it's questionable whether the esp8266 has enough memory to do anything useful.
+The author does not expect to test with the esp8266 but will accept PRs that don't significantly
+increase code size for other platforms.
 
 ### Compatibility with the original mqtt_as
 
-The API of MQTTClient in `mqtt_async` is largely the same as the original `mqtt_as`,
-see below for incompatible changes.
-The implementation, however, has been rewritten resulting in the following changes:
+The API of MQTTClient in `mqtt_async` is similar to the original `mqtt_as`:
+- `subscribe()` is the same
+- `publish()` has an optional `sync` parameter
+- the `subs_cb` callback has 5 parameters, adding `qos` and `dup` parameters.
+- the config dict has been changed significantly, see its description
+- a number of auxiliary methods have been dropped, they could be re-added
+
+The implementation, however, has been rewritten resulting in the following semantic changes:
 
 1. Support sending streams of MQTT messages at QoS=1 without blocking for an ACK after each message.
    This allows streaming of data using relatively small messages at high data rates.
@@ -151,19 +161,6 @@ The implementation, however, has been rewritten resulting in the following chang
    use `pytest`.
 1. Use the standard logging facility instead of ad-hoc debug messages.
 
-#### API incompatibilities
-
-Some features work slightly differently in `mqtt_async` vs. `mqtt_as` but the following
-incompatibilities prevent anything from working by just changing the import statement:
-
-- the `subs_cb` callback has 4 parameters, adding a qos parameter.
-- the `will` config has been changed from a tuple to an `MQTTMessage`.
-- the semantics of the `clean` config have been changed and `clean_init` has been dropped.
-- a number of methods have been dropped (isconnected, close, ...)
-- the `ssl` config has been dropped: set the `ssl_params` config to `{}` if nothing special is
-  required.
-- TODO: determine others
-
 ### Streaming data using small messages
 
 In general MQTT supports sending a long stream of data by breaking it up into small messages that
@@ -185,13 +182,12 @@ topic!)
 
 From a throughput point of view on an esp32 sending messages with a payload of 2800 bytes appears
 close to optimal.
-This size fits into two TCP segments (unless the topic is very long or the packets go through a network
-link with unusually low MSS) and can generally be pushed into the network stack without blocking.
-Use 1400 bytes to make messages fit into one TCP segment.
+This size fits into two TCP segments (unless the topic is very long or the packets go through a
+network link with unusually low MSS) and can generally be pushed into the network stack without
+blocking.
+Use 1400 bytes to make messages fit into one TCP segment and to consume less memory.
 
 ### How to use the clean session flag
-
-FIXME: the implementation still needs some tweaking...
 
 In MQTT the broker stores some data for each client, specifically the list of subscriptions and any
 pending or unacked messages. This storage allows clients to disconnect and reconnect without loosing
@@ -199,8 +195,9 @@ messages. The `clean` flag allows a client to signal to the broker to drop any s
 afresh. This is useful when the application changes and needs a different set of subscriptions or
 when a client starts and does not want a deluge of possibly old messages to be delivered.
 
-Unfortunately the semantics of the MQTT `clean` session flag are a little more complicated than it may
-seem at first sight. The `mqtt_async` library implements the following two use-cases:
+Unfortunately the semantics of the MQTT `clean` session flag are a little more complicated than
+it may seem at first sight.
+The `mqtt_async` library implements the following two use-cases:
 1. Clients that want a clean slate as they connect, i.e. no old subscriptions and no queued
    messages, should set `config.clean = True`. Under the hood the `MQTTClient` will connect with
    `clean=True`, then disconnect and reconnect with `clean=False`. All subsequent automatic
@@ -216,14 +213,16 @@ Note that all the above discussion about saved state is linked to the client ID 
 `config.client_id`). An application can also get a slean slate by switching to a different
 client id.
 
-As note to the interested, the connect-disconnect-reconnect to implement the "clean slate" semantics
+As note to the curious, the connect-disconnect-reconnect to implement the "clean slate" semantics
 is necessary because of the following statement from the spec:
 
-> If CleanSession is set to 1, the Client and Server MUST discard any previous Session and start a new one. This Session lasts as long as the Network Connection. State data associated with this Session MUST NOT be reused in any subsequent Session [MQTT-3.1.2-6].
+> If CleanSession is set to 1, the Client and Server MUST discard any previous Session and start
+> a new one. This Session lasts as long as the Network Connection. State data associated with
+> this Session MUST NOT be reused in any subsequent Session [MQTT-3.1.2-6].
 
 The last sentence means that state is dropped not just at the start but also at the end of that
-session, which would mean that if a network hiccup caused a disconnect-reconnect in `MQTTClient` state
-would be lost.
+session, which would mean that if a network hiccup caused a disconnect-reconnect in `MQTTClient`
+state would be lost.
 
 ### Testing strategy
 
@@ -267,30 +266,26 @@ creating a session. It is not useful as a unit test and kept for posteriority...
 #### `__init__(config)` (constructor)
 
 The constructor initializes an `MQTTClient` instance with the provided configuration.
-The config must be an instance of the `MQTTConfig` class and is typically put together
-by modifying the default `mqtt_async.config` instance. The `MQTTConfig` fields can be accessed
-either as class fields or using the `['field_name']` map syntax.
+The configuration is a dict for which default values are provided by `mqtt_async.config`
+(which is merged into `config` in `__init__` unlike the way it works in `mqtt_as`).
 
-The following `MQTTConfig` fields must be set:
+The following `config` elements must be set:
 - `server`: MQTT broker hostname or IP address, no default.
-- `connect_coro`: `async def` function that is run when the first MQTT connection is established, it
-  should subscribe to the desired topics, default: None.
-- `subs_cb`: `def` or `async def` function that is run when a message arrives on a topic, default:
-  None.
+- `subs_cb`: `def` function that is run when a message arrives on a topic, default: None.
 
-The following `MQTTConfig` fields are optional but recommended:
+The following `config` elements are optional but recommended:
 - `ssid`: WiFi SSID to connect or reconnect Wifi in case of failure, default: None.
 - `wifi_pw`: WiFi password, default: None.
-- Note that the esp8266 does not require the wifi info if it has previously connected as it remebers
-  the last used credentials.
 
-Optional `MQTTConfig` fields:
-- `ssl_params`: enable TLS with the provided parameters, default: None (disable TLS/SSL). *Not yet
-  supported*
-- `connect_coro`: `async def` function that is run with a `status` parameter when an MQTT connection
+Optional `config` elements:
+- `ssl_params`: enable TLS with the provided parameters, like `ussl.wrap_socket`, example:
+  `{ "server_hostname": "core.voneicken.com" }`, default: None (disables TLS/SSL).
+- `connect_coro`: `async def` function that is run when the first MQTT connection is established, it
+  should subscribe to the desired topics, default: None.
+- `wifi_coro`: `async def` function that is run with a `status` parameter when an MQTT connection
   starts (`status=True`) or ends (`status=False`), default: None.
 - `port`: MQTT broker port, default: 0 which means 8883 if TLS is used, else 1883.
-- `client_id`: MQTT client id, must be a `bytes` instance, default: `machine.unique_id()` in hex.
+- `client_id`: MQTT client id, default: `machine.unique_id()` in hex.
 - `user`: MQTT credentials (if required).
 - `password` MQTT password for `user`.
 - `clean`: start a clean MQTT session, see above for a discussion, default: True.
@@ -299,43 +294,22 @@ Optional `MQTTConfig` fields:
 - `keepalive`: Time in seconds before broker regards client as having died and sends a last-will
   message. Not relevant if no `will` is set.
 - `will`: `MQTTMessage` instance with last-will message, can be set using
-  `config.set-last-will(topic, message, retain, qos)`, default: None.
+  `mqtt_async.set-last-will(topic, message, retain, qos)`, default: None.
 - `interface`: should be `network.WLAN(network.STA_IF)` or `WLAN(network.AP_IF)`, default: `STA_IF`.
 
 #### `connect()` (async)
 
-No args. Connects to the specified broker. The application should call
+Connects to the specified broker. The application should call
 `connect` once on startup. If this fails (due to WiFi or the broker being
-unavailable) an `OSError` will be raised. Subsequent reconnections after
-outages are handled automatically.
+unavailable) an `OSError` will be raised and no further action will be taken.
+If it succeeds, a background task is started that automatically reconnects if
+there is a failure.
 
-#### `publish(topic, msg, retain=False, qos=0, sync=True)` (async)
+#### `start()`
 
-Publishes the messages with the provided parameters. Topic and msg should be `bytes` but `str` is
-also accepted and automatically encoded.
-
-If connectivity is not OK `publish` will block until a connection is established.
-
-For QoS 0, `publish` sends the message and returns immediately.
-
-For QoS 1, `publish` sends the message then it waits for any _previously_ outstanding ACK.
-If `sync=False` it then returns (i.e. doesn't wait for an ACK for the just-sent message).
-If `sync=True` it waits for the just-sent message to be ACKed and then returns.
-If the connection gets dropped at any point in time `publish` automatically retransmits any unACKed
-message.
-
-#### `subscribe(topic, qos=0)` (async)
-
-Subscribes to a topic and awaits an ACK from the broker.
-The `qos` parameter specifies at which QoS level the messages will be transmitted by the broker.
-
-Subscriptions should generally be made in the `connect_coro` specified in the config.
-
-If connectivity is not OK `publish` will block until a connection is established.
-
-When messages arrive on subscriptions the `subs_cb` is called with the topic, message, retain flag,
-and QoS level as parameters. The `subs_cb` may be a plain function or an `async def` function. For
-incoming QoS=1 messages an acknowledgment is sent to the broker once `subs_cb` returns.
+Starts the background task that keeps the connection alive,
+which in turn will call `connect()` to get things going.
+`start()` is intended to be used instead of `connect()` when there is nothing to do on error.
 
 #### `disconnect()` (async)
 
@@ -344,6 +318,41 @@ suppresses the last-will message in the broker.
 
 It is not possible to reconnect an `MQTTClient` after calling disconnect: create a fresh instance
 instead.
+
+#### `publish(topic, msg, retain=False, qos=0, sync=True)` (async)
+
+Publishes the messages with the provided parameters. Topic and msg may be `bytes` or `str`.
+
+If connectivity is not OK `publish` will block until a connection is established.
+
+For QoS 0, `publish` sends the message and returns immediately.
+
+For QoS 1 and `sync==True`, `publish` sends the message then waits for an ACK.
+
+For QoS 1 and `sync==False`, `publish` sends the message then waits for any _previously_
+outstanding ACK.
+
+If the connection gets dropped at any point in time `publish` automatically retransmits any unACKed
+message.
+
+#### `subscribe(topic, qos=0)` (async)
+
+Subscribes to a topic and awaits an ACK from the broker.
+The `qos` parameter specifies at which QoS level the messages will be transmitted by the broker.
+
+It raises an OSError if the subscription fails or the QoS value is not accepted.
+
+Subscriptions should generally be made in the `connect_coro` specified in the config.
+
+If connectivity is not OK `subscribe` will block until a connection is established.
+
+When messages arrive on subscriptions the `subs_cb` is called with the topic, message, retain flag,
+QoS level and dup flag as parameters.
+The `subs_cb` should be a plain function and reading on the MQTT connection is blocked
+until it returns, which it should do promptly. For
+incoming QoS=1 messages an acknowledgment is sent to the broker once `subs_cb` returns.
+
+#### `disconnect()` (async)
 
 ### Logging
 
@@ -368,10 +377,10 @@ timeouts if desired.
 ### Not supported
 
 The following methods from `mqtt_as` are not supported:
-- `isconnected():` returns `True` if connectivity is OK otherwise it returns `False` and schedules
-reconnection attempts.
-- `close()`: Closes the socket. For use in development to prevent `LmacRxBlk:1` failures if
-an application raises an exception or is terminated with ctrl-C.
+- `isconnected():` returns `True` if connectivity is OK otherwise it returns `False` and
+  schedules reconnection attempts.
+- `close()`: Closes the socket. For use in development (esp8266) to prevent `LmacRxBlk:1` failures
+  if an application raises an exception or is terminated with ctrl-C.
 - `broker_up()`: Unless data was received in the last second it issues an MQTT ping and waits
   for a response. If it times out (`response_time` exceeded) with no response it
   returns `False` otherwise it returns `True`.
