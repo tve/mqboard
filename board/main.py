@@ -120,6 +120,7 @@ def GLOBALS():
 if hasattr(board, "connect_wifi"):
     connect_wifi = board.connect_wifi
 
+
 # main launches asyncio modules/tasks
 def main():  # function keeps global namespace clean
 
@@ -141,6 +142,7 @@ def main():  # function keeps global namespace clean
             )
 
         loop.set_exception_handler(def_exception_handler)
+        log.info("MEM free=%d contig=%d", gc.mem_free(), gc.mem_maxfree())
 
         for name in board.modules:
             try:
@@ -158,6 +160,7 @@ def main():  # function keeps global namespace clean
                 log.error(str(e))
             except Exception as e:
                 log.exc(e, "Cannot start %s: ", name)
+            log.info("MEM free=%d contig=%d", gc.mem_free(), gc.mem_maxfree())
         #micropython.mem_info()
         #
         log.warning("Starting asyncio loop")
