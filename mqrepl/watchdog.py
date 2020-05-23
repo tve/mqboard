@@ -1,6 +1,7 @@
 # Watchdog task to keep feeding the watchdog timer via MQRepl
 # Copyright © 2020 by Thorsten von Eicken.
 import sys, machine, logging, time, struct, uasyncio as asyncio
+from esp32 import Partition
 
 
 MAGIC1 = 0xF00D
@@ -22,10 +23,13 @@ def feed():
     elif first == 0:
         first = time.ticks_ms()  # record time of first feeding
     elif time.ticks_diff(time.ticks_ms(), first) > allok:
+        part = Partition(Partition.RUNNING)
+        part.mark_app_valid_cancel_rollback()
         if safemode:
             log.critical("Switching to NORMAL MODE via reset")
             reset(True)
         else:
+            log.warning("Next reset: normal boot")
             normalboot(True)
             first = None
 
