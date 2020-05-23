@@ -512,41 +512,41 @@ class MQTTClient:
         self._prev_pub = None  # MQTTMessage of as yet unacked async pub
         self._prev_pub_proto = None  # self._proto used for as yet unacked async pub
         # misc
-        if platform == "esp8266":
-            import esp
-
-            esp.sleep_type(0)  # Improve connection integrity at cost of power consumption.
+        # if platform == "esp8266":
+        #    import esp
+        #    esp.sleep_type(0)  # Improve connection integrity at cost of power consumption.
 
     async def wifi_connect(self):
         log.info("connecting wifi")
         s = self._c["interface"]
-        if platform == "esp8266":
-            if s.isconnected():  # 1st attempt, already connected.
-                return
-            s.active(True)
-            s.connect()  # ESP8266 remembers connection.
-            for _ in range(60):
-                if (
-                    s.status() != network.STAT_CONNECTING
-                ):  # Break out on fail or success. Check once per sec.
-                    break
-                await asyncio.sleep(_CONN_DELAY)
-            if (
-                s.status() == network.STAT_CONNECTING
-            ):  # might hang forever awaiting dhcp lease renewal or something else
-                s.disconnect()
-                await asyncio.sleep(_CONN_DELAY)
-            if (
-                not s.isconnected()
-                and self._c["ssid"] is not None
-                and self._c["wifi_pw"] is not None
-            ):
-                s.connect(self._c["ssid"], self._c["wifi_pw"])
-                while (
-                    s.status() == network.STAT_CONNECTING
-                ):  # Break out on fail or success. Check once per sec.
-                    await asyncio.sleep(_CONN_DELAY)
-        elif self._c["ssid"]:
+        # if platform == "esp8266":
+        #    if s.isconnected():  # 1st attempt, already connected.
+        #        return
+        #    s.active(True)
+        #    s.connect()  # ESP8266 remembers connection.
+        #    for _ in range(60):
+        #        if (
+        #            s.status() != network.STAT_CONNECTING
+        #        ):  # Break out on fail or success. Check once per sec.
+        #            break
+        #        await asyncio.sleep(_CONN_DELAY)
+        #    if (
+        #        s.status() == network.STAT_CONNECTING
+        #    ):  # might hang forever awaiting dhcp lease renewal or something else
+        #        s.disconnect()
+        #        await asyncio.sleep(_CONN_DELAY)
+        #    if (
+        #        not s.isconnected()
+        #        and self._c["ssid"] is not None
+        #        and self._c["wifi_pw"] is not None
+        #    ):
+        #        s.connect(self._c["ssid"], self._c["wifi_pw"])
+        #        while (
+        #            s.status() == network.STAT_CONNECTING
+        #        ):  # Break out on fail or success. Check once per sec.
+        #            await asyncio.sleep(_CONN_DELAY)
+        # elif self._c["ssid"]:
+        if self._c["ssid"]:
             s.active(True)
             # log.debug("Connecting, li=%d", self._c["listen_interval"])
             s.connect(self._c["ssid"], self._c["wifi_pw"])
