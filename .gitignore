@@ -9,3 +9,4 @@ dist
 *.mpy
 orig
 wifi.py
+board_config.py
