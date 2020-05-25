@@ -39,16 +39,25 @@ log.setLevel(logging.INFO)
     metavar="PSK",
 )
 @click.option(
+    "--prefix",
+    "-p",
+    envvar="MQBOARD_PREFIX",
+    required=False,
+    type=click.STRING,
+    help="MQTT topic prefix (just before '/log'), default None or MQBOARD_PREFIX env var.",
+    metavar="PREFIX",
+)
+@click.option(
     "--topic",
     "-t",
     envvar="MQBOARD_TOPIC",
-    required=True,
+    required=False,
     type=click.STRING,
-    help="MQTT topic prefix (just before '/log'), default None or MQBOARD_TOPIC env var.",
+    help="MQTT topic, default None or MQBOARD_TOPIC env var.",
     metavar="TOPIC",
 )
 @click.version_option()
-def cli(server, port, tls, topic):
+def cli(server, port, tls, prefix, topic):
     """mqview - MQTT MicroPython log viewer
     """
     global _mqclient
@@ -60,7 +69,12 @@ def cli(server, port, tls, topic):
     _mqclient.enable_logger(logging.getLogger("paho-mqtt"))
     if tls:
         _mqclient.tls_set()
-    topic += "/log"
+
+    if not topic or topic == "":
+        if not prefix or prefix == "":
+            print("--prefix or --topic are required", file=sys.stderr)
+            sys.exit(1)
+        topic = prefix + "/log"
 
     exit_code = None
     is_conn = False
