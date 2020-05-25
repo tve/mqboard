@@ -1,0 +1,9 @@
+#! /usr/bin/env ../mqboard/mqsync
+/safemode:
+  ./mpy-lib: sntp.py
+  ../board: main.py logging.py board.py mqtt.py
+  ../mqrepl: mqrepl.py watchdog.py
+  ../mqtt_async/mqtt_async.py
+/:
+  ../board: boot.py
+  board_config.py

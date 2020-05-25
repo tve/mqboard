@@ -1,0 +1,13 @@
+#! /usr/bin/env ../mqboard/mqsync
+/lib:
+  ./mpy-lib: sntp.py sysinfo.py
+  ../board: logging.py board.py mqtt.py
+  ../mqrepl: mqrepl.py watchdog.py
+  ../mqtt_async/mqtt_async.py
+/src:
+  blinky.py
+/:
+  ../board: main.py
+  board_config.py
+/: --check-only
+  ../board/boot.py
