@@ -100,7 +100,10 @@ def get_actions(engine, dir, src):
         # print("Evaluating", src_file, "->", tgt_file)
         why = "missing"
         if tgt_file in tgt_files:
-            src_sha1 = file_hash(src_file)
+            try:
+                src_sha1 = file_hash(src_file)
+            except OSError as e:
+                raise click.ClickException(e)
             if src_sha1 == tgt_files[tgt_file]:
                 actions.append(("ok", tgt_file))
                 continue
