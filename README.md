@@ -1,4 +1,4 @@
-# MicroPython MQTT Framework
+# MQBoard - MicroPython MQTT Micro-Framework
 
 This repository contains a micro-framework for using MQTT with asyncio on MicroPython boards,
 primarily on the ESP32. The `mqtt_async` library can be used stand-alone as a robust
@@ -84,7 +84,7 @@ The getting-started consists of three steps:
   certificate, e.g. from Let's Encrypt.
 - ESP32 pre-loaded with TvE's version of MicroPython supporting the "new asyncio", i.e. post-v1.12, 
   as well as a functioning `RTC.memory()`, asyncio with TLS, and a bunch of other bug fixes: 
-  https://github.com/tve/micropython.
+  https://github.com/tve/micropython/releases/tag/v1.12-tve2.
 - The micropython repository (https://github.com/micropython/micropython) or at least the
   `pyboard.py` tool from its `tools` directory.
 - The Python click and paho-mqtt packages: `pip install click paho-mqtt`.
