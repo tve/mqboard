@@ -120,7 +120,7 @@ def cli(ctx, server, port, tls, timeout, verbose, prefix, topic):
 
 
 if __name__ == "__main__":
-    for fn in os.listdir(os.path.dirname(__file__)):
+    for fn in os.listdir(os.path.dirname(os.path.realpath(__file__))):
         if fn in ["mqboard.py", "setup.py"] or not fn.endswith(".py"):
             continue
         mod = __import__(fn[:-3])
