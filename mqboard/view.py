@@ -31,7 +31,7 @@ def do_view(engine):
         elif severity == "E ":
             click.secho(m, fg="red", bold=True)
         elif severity == "W ":
-            click.secho(m, fg="yellow")
+            click.secho(m, fg="yellow", bold=True)
         elif severity == "I ":
             click.secho(m, fg="green")
         elif severity == "D ":
