@@ -4,6 +4,6 @@
   ../board: main.py logging.py board.py mqtt.py
   ../mqrepl: mqrepl.py watchdog.py
   ../mqtt_async/mqtt_async.py
+  board_config.py
 /:
   ../board: boot.py
-  board_config.py

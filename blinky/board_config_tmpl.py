@@ -1,11 +1,16 @@
 # board_config contains magic strings that don't get published or checked into source control
 
+# kind tells us which type of board this is running, it is used in board to define LED pins
 kind = "nodemcu"
+#kind = "huzzah32"
+#kind = "lolin-d32"
+#kind = "esp32thing"
+#kind = "tinypico"
+#kind = "ezsbc"
 
-# teststa, antenna, home, ...
+# location is the system name and is used in mqtt topics, etc
 location = "blinky"
 
-# info to connect to wifi
 wifi_ssid = "MY-SSID"       <--- UPDATE
 wifi_pass = "MY-PASSWD"     <--- UPDATE
 
@@ -18,8 +23,8 @@ syspath = ["/src"]
 # The dicts below get passed to the start() function of the modules loaded by main.py.
 # The name of each dict must match the name of the module.
 
-mqtt = {
-    "server"     : "192.168.0.14",    <--- UPDATE
+mqtt = {  # refer to mqtt_async for the list of config options
+    "server"     : "192.168.0.14",                               <--- UPDATE
     "ssl_params" : { "server_hostname": "mqtt.example.com" },    <--- UPDATE/REMOVE
     "user"       : "esp32/blinky",                               <--- UPDATE/REMOVE
     "password"   : "00000000000000000000000000000000",           <--- UPDATE/REMOVE
@@ -27,13 +32,8 @@ mqtt = {
     "wifi_pw"    : wifi_pass,
 }
 
-# little convenience for blincky demo to support with and without mqtt["user"]
+# little convenience for demo to support with and without mqtt["user"]
 mqtt_prefix = mqtt.get("user", "esp32/" + location)
-
-sntp = {
-    "host"   : "pool.ntp.org",
-    "zone"   : "PST+8PDT,M3.2.0/2,M11.1.0/2",   <--- UPDATE
-}
 
 mqrepl = {
     "prefix" : mqtt_prefix + "/mqb/",  # prefix is before cmd/... or reply/...
@@ -48,13 +48,19 @@ watchdog = {
 
 logging = {
     "topic"      : mqtt_prefix + "/log",
-    "boot_sz"    : 10*1024,  # large buffer at boot, got plenty of memory
-    "boot_level" :   10,     # 10=debug, 20=info, 30=warning (trying not to import logging)
-    "loop_sz"    : 2048,     # more moderate buffer once entering run loop
-    "loop_level" :   10,     # 10=debug, 20=info, 30=warning (trying not to import logging)
+    "boot_sz"    : 10*1024,  # large buffer at boot, got plenty of memory then
+    "boot_level" :   10,     # 10=debug, 20=info, 30=warning (avoiding import logging)
+    "loop_sz"    : 1024,     # more moderate buffer once connected
+    "loop_level" :   10,     # 10=debug, 20=info, 30=warning (avoiding import logging)
 }
 
-# sysinfo task sends memory, uptime, and wifi info periodically
+# network time sync; from github.com/tve/mpy-lib/sntp
+sntp = {
+    "host"   : "pool.ntp.org",
+    "zone"   : "PST+8PDT,M3.2.0/2,M11.1.0/2",   <--- UPDATE
+}
+
+# sysinfo task sends system info periodically; from github.com/tve/mpy-lib/sysinfo
 sysinfo = {
     "topic"      : mqtt_prefix + "/sysinfo",
     "interval"   : 20,  # interval in seconds, default is 60
@@ -65,8 +71,10 @@ blinky = {
     "period" : 800,  # initial period in milliseconds
 }
 
-# modules to load and call start(mqtt) on
+# Modules to load and call start on. For module foo, if this file defines foo then
+# foo.start(mqtt, foo) is called, else foo.start(mqtt, {}). If there is no foo.start() then
+# that's OK too.
 from __main__ import safemode
 modules = [ "mqtt", "sntp", "logging", "mqrepl", "watchdog" ]
 if not safemode:
-    modules += [ "blinky" ]
+    modules += [ "sysinfo", "blinky" ]
