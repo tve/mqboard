@@ -72,39 +72,122 @@ using CPython but the majority are actually executed on an ESP32 using gohci.
 
 ## Getting started
 
-TODO: it would be nice to have a sample application...
+The getting-started consists of three steps:
+1. Set-up some prerequisites
+2. Load the board with the safemode software, from there on it can be managed over MQTT
+3. Try out the sample blinky app (blinks the LED on the board at a frequency that can be controlled
+   over MQTT.
 
 ### Prerequisites
 
-- MQTT broker, preferably local, preferably supporting TLS (MQTTS), preferably using public
-  certificante, e.g. from Let's Encrypt.
-- ESP32 pre-loaded with a version of MicroPython supporting the "new asyncio", i.e. post-v1.12, 
-  preferably TvE's fork (https://github.com/tve/micropython)
+- MQTT broker, preferably local, preferably supporting TLS (MQTTS), preferably using a public
+  certificate, e.g. from Let's Encrypt.
+- ESP32 pre-loaded with TvE's version of MicroPython supporting the "new asyncio", i.e. post-v1.12, 
+  as well as a functioning `RTC.memory()`, asyncio with TLS, and a bunch of other bug fixes: 
+  https://github.com/tve/micropython.
+- The micropython repository (https://github.com/micropython/micropython) or at least the
+  `pyboard.py` tool from its `tools` directory.
 - The Python click and paho-mqtt packages: `pip install click paho-mqtt`.
 
-## First steps
+### Loading up safemode
 
-- in `./board` copy `board_config_tmpl.py` to `board_config.tmpl` and update the values to suit your
-  environment (the values you must update are `wifi_ssid`, `wifi_pass`, and the `mqtt` dict).
-- plug your esp32 into USB
-- run `./load.sh` to load all the necessary files
-- connect using a terminal app (be sure it honors ansi color escape codes), for example
-  `miniterm2.py --filter direct /dev/ttyUSB0 115200`, and reset the board (ctrl-t, ctrl-d two times
-  in miniterm, ctrl-a, ctrl-p in picocom)
-- you will see the board come up in normal mode, MicroPython start and throw an exception in
-  boot.py because no app is loaded/configured, and then immediately reboot into safe mode
-- once in safe mode, it will connect to the broker and wait for incoming commands: you will see some
-  50-odd log messages with "mqrepl: Subscribed to test/esp32/mqb/cmd/#" near the end
-- preferably in another terminal window/pane/tab try a repl command:
-  `./mqboard/mqboard  -s <your_broker> -p <1883 or 8883> -t test/esp32/mqrepl/mqb eval '2+3'`
-  (use the topic from the subscribed-to log message up to the "/cmd#"):
+Loading up the files that make up safe-mode is initially done over USB. Later on they can be updated
+over MQTT, but we need to bootstrap first.
+
+1. Wipe the esp32's filesystem clean (you don't need this if you just did a flash erase and
+   loaded the firmware):
 ```
-    INFO:mqboard:Pub esp32/test/mqb/cmd/eval/mOnqRI3b #0 last=1 len=5
-    5
-    INFO:mqboard:0.006kB in 0.130s -> 0.045kB/s
+    $ /home/src/esp32/micropython/tools/pyboard.py board/rm_rf.py
+    rmdir contents: /
+    rm //boot.py
+    rm //main.py
 ```
-  The eval result is the line with the "5".
-- to see an actual app check out https://github.com/tve/mpy-weather
+2. Copy the config file template to `board/board_config.py`, and modify it to suit your
+environment, e.g.:
+```
+    cp board/board_config_tmpl.py board/board_config.py
+    vim board/board_config.py
+```
+   The lines you need to edit are clearly marked.
+3. Load the files (adjust the path to the tools dir and the device name):
+```
+    $ PATH=/home/src/esp32/micropython/tools:$PATH PYBOARD_DEVICE=/dev/ttyUSB0 ./load.sh
+    device: /dev/ttyUSB0
+    cp ./board/boot.py :boot.py
+    mkdir :/safemode
+    cp ./board/main.py :/safemode/main.py
+    cp ./board/board.py :/safemode/board.py
+    cp ./board/logging.py :/safemode/logging.py
+    cp ./board/mqtt.py :/safemode/mqtt.py
+    cp ./mqrepl/mqrepl.py :/safemode/mqrepl.py
+    cp ./mqrepl/watchdog.py :/safemode/watchdog.py
+    cp ./mqtt_async/mqtt_async.py :/safemode/mqtt_async.py
+    cp ./board/board_config.py :/safemode/board_config.py
+```
+4. Open a new terminal window/tab/pane you can keep open to watch what the board is doing and
+   connect, ideally with a pgm that supports ANSI color escape sequences (sadly, colors don't show
+   here). Then either press the reset button on the board or toggle DTR (in minicom that's ctrl-t
+   ctrl-d two times, in picocom that's ctrl-a ctrl-p):
+```
+    $ miniterm2.py --filter direct /dev/ttyUSB0 115200
+    --- Miniterm on /dev/ttyUSB0  115200,8,N,1 ---
+    --- Quit: Ctrl+] | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H ---
+    --- DTR inactive ---
+    --- DTR active ---
+    ets Jun  8 2016 00:22:57
+
+    rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+    ...
+    I (579) cpu_start: Starting scheduler on PRO CPU.
+    I (0) cpu_start: Starting scheduler on APP CPU.
+    Traceback (most recent call last):
+      File "boot.py", line 51, in <module>
+    ImportError: no module named 'logging'
+    Switching to SAFE MODE
+    W 1394     main:
+
+    W 1401     main: MicroPython 1.12.0 (v1.12-weather-1-8-g251c8f5a3 on 2020-05-23)
+    W 1408     main: 4MB/OTA NO-BT module with ESP32
+    W 1414     main: esp32/test mqtest starting at (1970, 1, 1, 0, 0, 1, 3, 1, 0)
+
+    W 1423     main: Boot partition: ota_0
+    W 1431     main: SAFE MODE boot (normal mode failed)
+    W 1460     main: Reset cause: PWRON_RESET
+    I 1578     main: MEM free=101424 contig=94752
+    ...
+    I (9198) network: CONNECTED
+    I (9234) wifi: AP's beacon interval = 102400 us, DTIM period = 1
+    I (10053) tcpip_adapter: sta ip: 192.168.0.106, mask: 255.255.255.0, gw: 192.168.0.1
+    I (10055) network: GOT_IP
+    I 7080 mqtt_async: Connecting to ('192.168.0.14', 4883) id=esp32/test-mqtest clean=1
+    I 9244 mqtt_async: Connecting to ('192.168.0.14', 4883) id=esp32/test-mqtest clean=0
+    I 11166     mqtt: Initial MQTT connection (->3)
+    I 11175     main: Logging to esp32/test/log
+    I 11182     main: Log buf: 1350/10240 bytes
+    I 11214     mqtt: MQTT connected (->0)
+    I 11474     main: Log buf: 754/1024 bytes
+    I 11569   mqrepl: Subscribed to esp32/test/mqb/cmd/#
+    I 11607 watchdog: esp32/test/mqb/cmd/eval/0F00D/
+    I 11664   mqrepl: Dispatch eval, msglen=15 seq=0 last=True id=0F00D dup=0
+    ...
+```
+   What you see is are the initial boot messages from ESP-IDF followed by a python exception,
+   which is from `boot.py` trying to load the logger from the application. But we've only loaded
+   safe-mode files so far, hence the exception. As a result, `boot.py` switches to safe-mode and
+   proceeds. Then main prints some hello-world info and starts loading the modules comprising
+   the safe-mode application. These start wifi, connect via MQTT, and at the end you see the
+   watchdog sending a round-trip message to the MQTT Repl to feed the WDT timer. Your board is
+   now up!
+5. Try something:
+```
+    $ mqboard/mqboard --prefix esp32/test eval '45+876'
+    921
+```
+   The prefix corresponds to the part before the "/mqb" in the log message `I 11569   mqrepl:
+   Subscribed to esp32/test/mqb/cmd/#` (it's the `mqtt_prefix` variable in `board_config.py`).
+
+You can now proceed to the blinky demo app.
+
 
 For help, please post on https://forum.micropython.org 
 
