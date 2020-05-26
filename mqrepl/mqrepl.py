@@ -85,19 +85,19 @@ class OTA:
 
 
 # LogWriter is a helper class that sends text line-wise to a logger (logging module).
-class LogWriter(io.IOBase):
-    def __init__(self, logger, level):
-        self._logger = logger
-        self._level = level
-        self._wbuf = b""
-
-    def write(self, buf):
-        if buf == b"":
-            return
-        lines = (self._wbuf + buf).split(b"\n")
-        self._wbuf = lines[-1]
-        for l in lines[:-1]:
-            self._logger(self._level, l)
+#class LogWriter(io.IOBase):
+#    def __init__(self, logger, level):
+#        self._logger = logger
+#        self._level = level
+#        self._wbuf = b""
+#
+#    def write(self, buf):
+#        if buf == b"":
+#            return
+#        lines = (self._wbuf + buf).split(b"\n")
+#        self._wbuf = lines[-1]
+#        for l in lines[:-1]:
+#            self._logger(self._level, l)
 
 
 # MQRepl implements REPL-like functionality over MQTT. It receives command messages, performs
@@ -321,10 +321,14 @@ class MQRepl:
                 buf = "MQRepl protocol error {}: {}".format(cmd, e.args[0])
                 loop.create_task(self.mqclient.publish(errtopic, buf, qos=1))
             except Exception as e:
-                log.warning("Exception in %s", cmd)
-                lw = LogWriter(log.log, logging.WARNING)
-                sys.print_exception(e, lw)
-                micropython.mem_info()
+                log.warning("Exception in %s: %s", cmd, e)
+                #lw = LogWriter(log.log, logging.WARNING)
+                #sys.print_exception(e, lw)
+                errbuf = io.BytesIO(PKTLEN)
+                sys.print_exception(e, errbuf)
+                errbuf = errbuf.getvalue()
+                loop.create_task(self.mqclient.publish(errtopic, errbuf, qos=1))
+                #micropython.mem_info()
 
 
 def start(mqtt, config):
