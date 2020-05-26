@@ -4,7 +4,7 @@ export PATH=$HOME/bin:$PATH
 cd $(dirname $0)
 pwd
 
-echo "---- wiping flash clean ----"
+echo "---- wiping filesystem clean ----"
 if ! pyboard.py rm_rf.py; then
     echo OOPS
     exit 1
@@ -12,12 +12,8 @@ fi
 
 echo "----- loading board files -----"
 ../load.sh
-#pyboard.py -f cp boot.py :/
-#pyboard.py -f mkdir :/safemode
-#pyboard.py -f cp board.py logging.py main.py mqtt.py :/safemode/
-#pyboard.py -f cp $board_config :/safemode/board_config.py
 board_config=$HOME/board_config_esp32.py
-[ -f $board_config ] && pyboard -f cp $board_config :/safemode/board_config.py # for local testing
+[ -f $board_config ] && pyboard.py -f cp $board_config :/safemode/board_config.py # for local testing
 # now check they're all there
 out=$(pyboard.py -f ls /)
 exp='*boot.py*safemode*'
