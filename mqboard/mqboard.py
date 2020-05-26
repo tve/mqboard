@@ -8,6 +8,7 @@ import click
 import engine
 from functools import update_wrapper
 
+
 def global_opts(f):
     @click.option(
         "--server",
@@ -87,15 +88,19 @@ def global_opts(f):
     # @click.version_option()
     def new_func(*args, **kwargs):
         return f(*args, **kwargs)
+
     return update_wrapper(new_func, f)
+
 
 # get_topic figures out the topic given prefix and topic options
 def get_topic(prefix, topic):
     if not topic or topic == "":
         if not prefix or prefix == "":
-            return None # an error will be raised when engine is asked to connect
+            topic = None  # an error will be raised when engine is asked to connect
         else:
-            return prefix + "/mqb"
+            topic = prefix + "/mqb"
+    return topic
+
 
 @click.group()
 @global_opts

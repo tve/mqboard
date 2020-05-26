@@ -15,7 +15,7 @@ def view(ctx):
 
 def do_view(engine):
     # gross hack to change topic, need to figure out better way
-    if engine._topic.endswith("mqb"):
+    if engine._topic and engine._topic.endswith("mqb"):
         engine._topic = engine._topic[:-3] + "log"
 
     subscribed = False
