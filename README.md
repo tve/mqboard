@@ -109,6 +109,7 @@ environment, e.g.:
     vim board/board_config.py
 ```
    The lines you need to edit are clearly marked.
+
 3. Load the files (adjust the path to the tools dir and the device name):
 ```
     $ PATH=/home/src/esp32/micropython/tools:$PATH PYBOARD_DEVICE=/dev/ttyUSB0 ./load.sh
@@ -178,10 +179,13 @@ environment, e.g.:
    the safe-mode application. These start wifi, connect via MQTT, and at the end you see the
    watchdog sending a round-trip message to the MQTT Repl to feed the WDT timer. Your board is
    now up!
+
 5. Try something:
 ```
-    $ mqboard/mqboard --prefix esp32/test eval '45+876'
+    $ ./mqboard/mqboard --prefix esp32/test eval '45+876'
     921
+    $ ./mqboard/mqboard --prefix esp32/blinky eval 'import sys; print(sys.implementation)'
+    (name='micropython', version=(1, 12, 0), mpy=10757)
 ```
    The prefix corresponds to the part before the "/mqb" in the log message `I 11569   mqrepl:
    Subscribed to esp32/test/mqb/cmd/#` (it's the `mqtt_prefix` variable in `board_config.py`).
