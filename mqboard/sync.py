@@ -48,6 +48,8 @@ def parse_spec(infile):
                 if sep > 0:
                     src_file = t[:sep]
                     dst_file = t[sep + 2 :]
+                    if "*" in src_file or "?" in src_file:
+                        raise ValueError("Cannot mix wildcards with '->' in %s" % src_file)
                 else:
                     src_file = dst_file = t
                 spec[tgt_dir]["files"].append((src_dir + src_file, dst_file, tgt_opts))
@@ -86,9 +88,7 @@ def get_actions(engine, dir, src):
     src_files = []
     for src_file, tgt_file, tgt_opts in src["files"]:
         if "*" in src_file or "?" in src_file:
-            if src_file != tgt_file:
-                raise ValueError("Cannot mix wildcards with '->' in %s" % src_file)
-            src_files += [(f, f) for f in glob(src_file)]
+            src_files += [(f, f, tgt_opts) for f in glob(src_file)]
         else:
             src_files.append((src_file, tgt_file, tgt_opts))
 
