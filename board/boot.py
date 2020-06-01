@@ -31,7 +31,7 @@ def _safemode_state():
         return 0  # RTC has some random value, bad news...
 
 
-_safestate = _safemode_state()  # _safestate is used by logging below
+_safestate = _safemode_state()  # _safestate is used by logging in main
 safemode = not _safestate  # stays in global namespace
 if safemode:
     sys.path[:] = ['/safemode', '']
