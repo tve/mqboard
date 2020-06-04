@@ -74,15 +74,15 @@ def get_actions(engine, dir, src):
     actions = []
     #print("Target directory", dir)
     # invoke ls command to get SHA1's of files on the board
-    result = dirops.do_ls(engine, directory=dir, recursive=False, sha=True)
-    result = result.decode("utf-8")
-    if result == "":
-        # dir doesn't exist
-        actions.append(("mkdir", dir))
-        tgt_files = {}
-    else:
+    try:
+        result = dirops.do_ls(engine, directory=dir, recursive=False, sha=True)
+        result = result.decode("utf-8")
         tgt_files = eval("{" + result.replace("\n", ",") + "}")
         # print("files:", repr(tgt_files))
+    except click.Abort:
+        # assume this is because dir doesn't exist
+        actions.append(("mkdir", dir))
+        tgt_files = {}
 
     # Expand wildcards in source files
     src_files = []
