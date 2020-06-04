@@ -33,17 +33,17 @@ def _safemode_state():
 
 _safestate = _safemode_state()  # _safestate is used by logging in main
 safemode = not _safestate  # stays in global namespace
+del _safemode_state
 if safemode:
-    sys.path[:] = ['/safemode', '']
+    sys.path[:] = ["/safemode", ""]
     os.chdir("/safemode")  # required to get main.py from /safemode, sigh
 # print("safestate:", _safestate, "safemode:", safemode, "cwd:", os.getcwd())
-del _safemode_state
 
 # watchdog
 #
 # The watchdog implementation is split into two parts: here the timer is armed and it's the problem
 # of some module loaded later on to keep it fed.
-machine.WDT(timeout=70 * 1000)  # watchdog task has about one minute to start and change timeout
+machine.WDT(timeout=70000)  # watchdog task has about one minute to start and change timeout
 
 # Import logging and board; the except clause gets triggered on a fresh board when only the
 # safemode directory is populated and it shortens the time to the WDT timeout to do a soft reset
@@ -55,7 +55,7 @@ except ImportError as e:
         # could just reset, but that causes issues if pyboard.py is used to get into raw repl
         safemode = True
         _safestate = 3
-        sys.path[:] = ['/safemode', '']
+        sys.path[:] = ["/safemode", ""]
         os.chdir("/safemode")
         print("Switching to SAFE MODE")
         import logging, board

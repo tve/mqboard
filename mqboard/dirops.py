@@ -69,8 +69,7 @@ def _ls(d):
     for f in uos.ilistdir(d):
       if f[1] & 0x4000: pass # _ls_dir(d + f[0])
       else: print("'%s':'%s'" % (f[0], _file_sha(d + f[0])))
-  try: _ls_dir(d)
-  except OSError: pass
+  _ls_dir(d)
 """
         cmd += "_ls('%s'); del _ls\n" % directory
     elif recursive:

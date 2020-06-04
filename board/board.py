@@ -78,6 +78,17 @@ def define_led():
 
         fail_led = set_red
         act_led = set_blue
+    elif kind == "pybd":
+        from pyb import LED
+
+        def led(n, v):
+            if v:
+                LED(n).on()
+            else:
+                LED(n).off()
+
+        act_led = lambda v: led(3, v)
+        fail_led = lambda v: led(1, v)
 
 
 define_led()

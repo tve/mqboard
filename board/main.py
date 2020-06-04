@@ -2,7 +2,7 @@
 # Copyright © 2020 by Thorsten von Eicken.
 
 # some of these are not used here, but they stay in the global env used by mqrepl, which is handy
-import gc, sys, machine, os, time, micropython, esp32
+import gc, sys, machine, os, time, micropython
 import logging, board
 
 # If board config defines logging_config then init logging to buffer the boot messages.
@@ -25,7 +25,9 @@ del _u
 del _uname
 
 # log some info
-log.warning("Boot partition: %s", esp32.Partition(esp32.Partition.RUNNING).info()[4])
+if sys.platform == 'esp32':
+    import esp32
+    log.warning("Boot partition: %s", esp32.Partition(esp32.Partition.RUNNING).info()[4])
 _sf = "SAFE MODE boot "
 if not "_safestate" in globals():  # this only happens in CI
     _safestate = "Test mode"
@@ -36,6 +38,8 @@ elif _safestate == 1:
     _safestate = _sf + "(hard reset)"
 elif _safestate == 3:
     _safestate = _sf + "(normal mode failed)"
+elif _safestate == 4:  # pybd
+    _safestate = _sf + "(WDT)"
 else:
     _safestate = _sf + "(no magic)"
 log.warning(_safestate)
@@ -73,9 +77,11 @@ def main():  # function keeps global namespace clean
                 context["future"].coro,
                 context["future"],
             )
+        def lm():
+            log.info("MEM free=%d contig=%d", gc.mem_free(), gc.mem_maxfree())
 
         loop.set_exception_handler(def_exception_handler)
-        log.info("MEM free=%d contig=%d", gc.mem_free(), gc.mem_maxfree())
+        lm()
 
         for name in board.modules:
             try:
@@ -93,7 +99,7 @@ def main():  # function keeps global namespace clean
                 log.error(str(e))
             except Exception as e:
                 log.exc(e, "Cannot start %s: ", name)
-            log.info("MEM free=%d contig=%d", gc.mem_free(), gc.mem_maxfree())
+            lm()
         # micropython.mem_info()
         #
         log.warning("Starting asyncio loop")

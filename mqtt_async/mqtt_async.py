@@ -11,7 +11,7 @@
 # The imports below are a little tricky in order to support operation under Micropython as well as
 # Linux CPython. The latter is used for tests.
 
-import socket, struct
+import socket, struct, sys
 from binascii import hexlify
 from errno import EINPROGRESS
 
@@ -413,7 +413,7 @@ class MQTTProto:
         res = await self._as_read(1)
         # We got something, dispatch based on message type
         op = res[0]
-        #log.debug("read_msg op=%x", op)
+        # log.debug("read_msg op=%x", op)
         if op == 0xD0:  # PINGRESP
             await self._as_read(1)
             self.last_ack = ticks_ms()
@@ -437,7 +437,7 @@ class MQTTProto:
             topic_len = await self._as_read(2)
             topic_len = (topic_len[0] << 8) | topic_len[1]
             topic = await self._as_read(topic_len)
-            #log.debug("topic:%s", topic)
+            # log.debug("topic:%s", topic)
             sz -= topic_len + 2
             retained = op & 0x1
             dup = op & 0x8
@@ -447,7 +447,7 @@ class MQTTProto:
                 pid = await self._as_read(2)
                 pid = pid[0] << 8 | pid[1]
                 sz -= 2
-            #log.debug("pid:%s sz=%d", pid, sz)
+            # log.debug("pid:%s sz=%d", pid, sz)
             if sz < 0:
                 raise OSError(-1, PROTO_ERROR, "pub sz", sz)
             else:
@@ -551,12 +551,12 @@ class MQTTClient:
             # log.debug("Connecting, li=%d", self._c["listen_interval"])
             s.connect(self._c["ssid"], self._c["wifi_pw"])
             # s.connect(self._c["ssid"], self._c["wifi_pw"], listen_interval=self._c["listen_interval"])
-            #            if PYBOARD:  # Doesn't yet have STAT_CONNECTING constant
-            #                while s.status() in (1, 2):
-            #                    await asyncio.sleep(_CONN_DELAY)
-            #            else:
-            while s.status() == network.STAT_CONNECTING:  # Break out on fail or success.
-                await asyncio.sleep_ms(200)
+            if sys.platform == "pyboard":  # Doesn't yet have STAT_CONNECTING constant
+                while s.status() in (1, 2):
+                    await asyncio.sleep(_CONN_DELAY)
+            else:
+                while s.status() == network.STAT_CONNECTING:  # Break out on fail or success.
+                    await asyncio.sleep_ms(200)
         else:
             raise OSError(-1, "no SSID to connect to Wifi")
 
@@ -758,11 +758,12 @@ class MQTTClient:
                     log.debug("reconnect OK!")
                     continue
                 except OSError as e:
-                    log.warning("error in MQTT reconnect: %s", e)
                     # Can get ECONNABORTED or -1. The latter signifies no or bad CONNACK received.
-                # connecting to broker didn't work, disconnect Wifi
-                if self._proto is not None:  # defensive coding -- not sure this can be triggered
-                    await self._reconnect(self._proto, "reconnect failed")
+                    # connecting to broker didn't work, disconnect Wifi
+                    if (
+                        self._proto is not None
+                    ):  # defensive coding -- not sure this can be triggered
+                        await self._reconnect(self._proto, "reconnect failed", e)
                 self._c["interface"].disconnect()
                 await asyncio.sleep(_CONN_DELAY)
                 continue  # not falling through to force recheck of while condition
@@ -795,7 +796,7 @@ class MQTTClient:
             except OSError as e:
                 if e.args[0] == -2:
                     raise OSError(-1, "subscribe failed: " + e.args[1])
-            await self._reconnect(proto, "sub")
+                await self._reconnect(proto, "sub", e)
 
     # publish with support for async. For QoS=0 this means publish and done. For QoS=1&sync=True
     # this means publish and wait for ack. For QoS=1&sync=False this means publish, then wait
@@ -835,5 +836,5 @@ class MQTTClient:
                     # sync packet
                     await self._await_pid(message.pid)
                 return
-            except OSError:
-                await self._reconnect(proto, "pub")
+            except OSError as e:
+                await self._reconnect(proto, "pub", e)

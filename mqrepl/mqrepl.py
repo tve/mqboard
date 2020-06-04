@@ -4,7 +4,6 @@
 # Requires mqtt_async for asyncio-based MQTT.
 
 import io, os, sys, time, struct, gc, micropython
-from esp32 import Partition
 from uasyncio import Loop as loop
 import uhashlib as hashlib
 import ubinascii as binascii
@@ -16,72 +15,74 @@ log = logging.getLogger(__name__)
 TOPIC = "esp32/test/mqb/"  # typ. overridden in MQRepl's constructor (exported to other modules)
 PKTLEN = 1400  # data bytes that reasonably fit into a TCP packet
 BUFLEN = PKTLEN * 2  # good number of data bytes to stream files
-BLOCKLEN = const(4096)  # data bytes in a flash block
 ERR_SINGLEMSG = "only single message supported"
 
-# OTA manages a MicroPython firmware update over-the-air.
-# It assumes that there are two "app" partitions in the partition table and updates the one
-# that is not currently running. When the update is complete, it sets the new partition as
-# the next one to boot. It does not reset/restart, use machine.reset() explicitly.
-class OTA:
-    def __init__(self):
-        self.part = Partition(Partition.RUNNING).get_next_update()
-        self.sha = hashlib.sha256()
-        self.seq = 0
-        self.block = 0
-        self.buf = bytearray(BLOCKLEN)
-        self.buflen = 0
+if sys.platform == 'esp32':
+    from esp32 import Partition
+    BLOCKLEN = const(4096)  # data bytes in a flash block
+    # OTA manages a MicroPython firmware update over-the-air.
+    # It assumes that there are two "app" partitions in the partition table and updates the one
+    # that is not currently running. When the update is complete, it sets the new partition as
+    # the next one to boot. It does not reset/restart, use machine.reset() explicitly.
+    class OTA:
+        def __init__(self):
+            self.part = Partition(Partition.RUNNING).get_next_update()
+            self.sha = hashlib.sha256()
+            self.seq = 0
+            self.block = 0
+            self.buf = bytearray(BLOCKLEN)
+            self.buflen = 0
 
-    # handle processes one message with a chunk of data in msg. The sequence number seq needs
-    # to increment sequentially and the last call needs to have last==True as well as the
-    # sha set to the hashlib.sha256(entire_data).hexdigest().
-    def handle(self, sha, msg, seq, last):
-        if self.seq is None:
-            raise ValueError("missing first message")
-        elif self.seq < seq:
-            # "duplicate message"
-            return None
-        elif self.seq > seq:
-            raise ValueError("message missing")
-        else:
-            self.seq += 1
-        self.sha.update(msg)
-        # avoid allocating memory: use buf as-is
-        msglen = len(msg)
-        if self.buflen + msglen >= BLOCKLEN:
-            # got a full block, assemble it and write to flash
-            cpylen = BLOCKLEN - self.buflen
-            self.buf[self.buflen : BLOCKLEN] = msg[:cpylen]
-            self.part.writeblocks(self.block, self.buf)
-            self.block += 1
-            msglen -= cpylen
-            if msglen > 0:
-                self.buf[:msglen] = msg[cpylen:]
-            self.buflen = msglen
-        else:
-            self.buf[self.buflen : self.buflen + msglen] = msg
-            self.buflen += msglen
-            if last and self.buflen > 0:
-                for i in range(BLOCKLEN - self.buflen):
-                    self.buf[self.buflen + i] = 0xFF  # erased flash is ff
+        # handle processes one message with a chunk of data in msg. The sequence number seq needs
+        # to increment sequentially and the last call needs to have last==True as well as the
+        # sha set to the hashlib.sha256(entire_data).hexdigest().
+        def handle(self, sha, msg, seq, last):
+            if self.seq is None:
+                raise ValueError("missing first message")
+            elif self.seq < seq:
+                # "duplicate message"
+                return None
+            elif self.seq > seq:
+                raise ValueError("message missing")
+            else:
+                self.seq += 1
+            self.sha.update(msg)
+            # avoid allocating memory: use buf as-is
+            msglen = len(msg)
+            if self.buflen + msglen >= BLOCKLEN:
+                # got a full block, assemble it and write to flash
+                cpylen = BLOCKLEN - self.buflen
+                self.buf[self.buflen : BLOCKLEN] = msg[:cpylen]
                 self.part.writeblocks(self.block, self.buf)
                 self.block += 1
-        assert len(self.buf) == BLOCKLEN
-        if last:
-            return self.finish(sha)
-        elif (seq & 7) == 0:
-            # print("Sending ACK {}".format(seq))
-            return "SEQ {}".format(seq).encode()
+                msglen -= cpylen
+                if msglen > 0:
+                    self.buf[:msglen] = msg[cpylen:]
+                self.buflen = msglen
+            else:
+                self.buf[self.buflen : self.buflen + msglen] = msg
+                self.buflen += msglen
+                if last and self.buflen > 0:
+                    for i in range(BLOCKLEN - self.buflen):
+                        self.buf[self.buflen + i] = 0xFF  # erased flash is ff
+                    self.part.writeblocks(self.block, self.buf)
+                    self.block += 1
+            assert len(self.buf) == BLOCKLEN
+            if last:
+                return self.finish(sha)
+            elif (seq & 7) == 0:
+                # print("Sending ACK {}".format(seq))
+                return "SEQ {}".format(seq).encode()
 
-    def finish(self, check_sha):
-        del self.buf
-        self.seq = None
-        calc_sha = binascii.hexlify(self.sha.digest())
-        check_sha = check_sha.encode()
-        if calc_sha != check_sha:
-            raise ValueError("SHA mismatch calc:{} check={}".format(calc_sha, check_sha))
-        self.part.set_boot()
-        return "OK"
+        def finish(self, check_sha):
+            del self.buf
+            self.seq = None
+            calc_sha = binascii.hexlify(self.sha.digest())
+            check_sha = check_sha.encode()
+            if calc_sha != check_sha:
+                raise ValueError("SHA mismatch calc:{} check={}".format(calc_sha, check_sha))
+            self.part.set_boot()
+            return "OK"
 
 
 # LogWriter is a helper class that sends text line-wise to a logger (logging module).
@@ -228,6 +229,8 @@ class MQRepl:
     # do_ota uploads a new firmware over-the-air and activates it for the next boot
     # the fname passed in must be the sha256 of the firmware
     def _do_ota(self, fname, msg, seq, last):
+        if sys.platform != 'esp32':
+            raise ValueError("N/A")
         if seq == 0:
             self._ota = OTA()
         if self._ota is not None:
