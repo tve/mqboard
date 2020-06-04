@@ -94,9 +94,8 @@ def get_actions(engine, dir, src):
 
     # Compare SHA1's and construct the actions
     for src_file, tgt_file, tgt_opts in src_files:
-        tgt_file = src_file
         if "/" in tgt_file:
-            tgt_file = src_file[src_file.rindex("/") + 1 :]
+            tgt_file = tgt_file[tgt_file.rindex("/") + 1 :]
         # print("Evaluating", src_file, "->", tgt_file)
         why = "missing"
         if tgt_file in tgt_files:
