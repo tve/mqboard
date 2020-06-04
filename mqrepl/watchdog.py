@@ -62,12 +62,15 @@ def normalboot(normal):
 
 
 # reset performs a delayed reset to allow logging time to send a farewell
-def reset(normal):
-    normalboot(normal)
+def reset(mode):
+    normalboot(mode == "n" or mode == "s")
 
     async def zap():
         await asyncio.sleep_ms(1000)
-        machine.reset()
+        if mode == "s":
+            machine.soft_reset()
+        else:
+            machine.reset()
 
     asyncio.Loop.create_task(zap())
 
