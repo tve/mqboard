@@ -11,7 +11,11 @@ pyboard.py -f cp \
     :/safemode/
 
 if [[ "$(pyboard.py -f ls)" != *board_config.py* ]]; then
-    if [[ -f $DIR/board/board_config.py ]]; then
+    if [[ -f ./board_config.py ]]; then
+        echo "Loading ./board_config.py"
+        pyboard.py -f cp ./board_config.py :/safemode/
+    elif [[ -f $DIR/board/board_config.py ]]; then
+        echo "Loading $DIR/board/board_config.py"
         pyboard.py -f cp $DIR/board/board_config.py :/safemode/
     else
         echo "Please load board_config.py manually"
