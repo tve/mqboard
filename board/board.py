@@ -47,10 +47,10 @@ def define_led():
         act_led, fail_led = (led, led)
     elif kind == "ezsbc":
         # EzSBC
-        lpin = machine.Pin(19, machine.Pin.OUT, None, value=1)
-        act_led = lambda v: lpin(not v)
-        lpin = machine.Pin(16, machine.Pin.OUT, None, value=1)
-        fail_led = lambda v: lpin(not v)
+        lpin1 = machine.Pin(19, machine.Pin.OUT, None, value=1)
+        act_led = lambda v: lpin1(not v)
+        lpin2 = machine.Pin(16, machine.Pin.OUT, None, value=1)
+        fail_led = lambda v: lpin2(not v)
     elif kind == "tinypico":
         # TinyPICO has an RGB LED so we use the red channel for WiFi and the blue
         # channel for message rx
