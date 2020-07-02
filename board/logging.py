@@ -92,7 +92,7 @@ class Logger(io.IOBase):
         if _hour_ticks is None or ticks_diff(t, _hour_ticks) > TICKS_PER_HOUR:
             tm = time()
             if tm < TIME_2020:  # we don't know the time
-                return str(t)
+                return str(t%100000000)
             tm = localtime(tm)
             _hour = tm[3]
             _hour_ticks = ticks_add(t, -(((tm[4] * 60) + tm[5]) * 1000))
@@ -105,11 +105,10 @@ class Logger(io.IOBase):
         )
 
     def log(self, level, msg, *args):
-        t = ticks_ms() % 100000000
         if level < (self.level or _level):
             return
         # prep full text
-        line = "%s %s %8s: " % (self._level_str(level), Logger._time_str(t), self.name)
+        line = "%s %s %8s: " % (self._level_str(level), Logger._time_str(ticks_ms()), self.name)
         if args:
             msg = msg % args
         if not isinstance(msg, str):
