@@ -112,13 +112,13 @@ def do_rm(engine, remote_file):
 @click.command()
 @click.argument("remote_dir")
 @click.pass_context
-def rmdir(ctx, remote_dir, missing_okay):
+def rmdir(ctx, remote_dir):
     """Remove an empty directory from the board.
     """
     engine = ctx.obj["engine"]
-    click.echo(do_rmdir(engine, remote_dir, missing_okay))
+    click.echo(do_rmdir(engine, remote_dir))
 
 
-def do_rmdir(engine, remote_dir, missing_okay):
+def do_rmdir(engine, remote_dir):
     expression = "import uos; uos.rmdir('%s')" % remote_dir
     return engine.perform("cmd/eval", expression)
