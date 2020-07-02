@@ -89,6 +89,7 @@ class MQTT:
                 return
             seq = ((msg.payload[0] & 0x7F) << 8) | msg.payload[1]
             last = (msg.payload[0] & 0x80) != 0
+            #self.debug(f"seq={seq} last={last} payload-len={len(msg.payload)}")
             # check sequence number
             if seq < next_seq:
                 self.debug(f"Duplicate message, expected seq={next_seq}, got {seq}")
@@ -97,6 +98,7 @@ class MQTT:
                 raise click.ClickException(
                     f"Missing message(s), expected seq={next_seq}, got {seq}"
                 )
+            next_seq = seq+1
             # handle ACK for long streams (a bit of a hack!)
             if len(msg.payload) - 2 < 10 and msg.payload[2:].startswith(b"SEQ "):
                 try:
