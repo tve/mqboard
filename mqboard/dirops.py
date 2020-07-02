@@ -38,7 +38,7 @@ def do_mkdir(engine, directory, ignore, path):
 
 # ========== ls ==========
 @click.command()
-@click.argument("directory", default="/")
+@click.argument("directory", default=".")
 @click.option("--recursive", "-r", is_flag=True, help="Recursively list files and directories.")
 @click.option(
     "--sha", is_flag=True, help="List files with SHA1 of contents, incompatible with --recursive."
