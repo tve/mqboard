@@ -156,7 +156,7 @@ class MQTT:
         buf = bytearray(BUFLEN + 2)
         cmd_topic = self._mktopic(cmd, tail=tail)
         flowctrl = len(msg) > 100 * 1024  # hack
-        while len(msg) > 0 and got_error is None:
+        while got_error is None:
             # make sure we're not more than 16 messages ahead of flow-control ACKs
             while flowctrl and seq - ack > 16 and got_error is None:
                 loop()
@@ -171,6 +171,8 @@ class MQTT:
             self._mqclient.publish(cmd_topic, buf, qos=1)
             seq += 1
             loop()
+            if len(msg) == 0:
+                break
         # self.debug("done publishing")
 
         # wait for replies
