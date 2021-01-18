@@ -28,6 +28,14 @@ def define_led():
         lpin = machine.Pin(13, machine.Pin.OUT, None, value=0)
         led = lambda v: lpin(v)
         fail_led = led
+    elif kind == "esp32-sim1":
+        # TvE custom ESP32 SIM module v1
+        lpin1 = machine.Pin(2, machine.Pin.OUT, None, value=1)
+        act_led = lambda v: lpin1(v)
+        lpin2 = machine.Pin(5, machine.Pin.OUT, None, value=1)
+        fail_led = lambda v: lpin2(not v)
+        bat_volt_pin = machine.ADC(machine.Pin(35))
+        bat_volt_pin.atten(machine.ADC.ATTN_11DB)
     elif kind == "lolin-d32":
         # Wemos Lolin D-32
         lpin = machine.Pin(5, machine.Pin.OUT, None, value=1)
