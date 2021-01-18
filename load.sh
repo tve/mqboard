@@ -3,11 +3,19 @@ DIR=$(dirname $0)
 echo device: ${PYBOARD_DEVICE:-/dev/ttyACM0}
 
 [[ "$(pyboard.py -f ls /)" == *safemode* ]] || pyboard.py -f mkdir /safemode
+
 pyboard.py -f cp $DIR/board/boot.py :
+
+if [[ "$(pyboard.py -c 'import mqtt_async')" == *ImportError* ]]; then
+    pyboard.py -f cp \
+        $DIR/board/logging.py \
+        $DIR/mqtt_async/mqtt_async.py \
+        $DIR/mqrepl/mqrepl.py \
+        :/safemode/
+fi
 pyboard.py -f cp \
-    $DIR/board/{main,board,logging,mqtt}.py \
-    $DIR/mqrepl/{mqrepl,watchdog}.py \
-    $DIR/mqtt_async/mqtt_async.py \
+    $DIR/board/{main,board,mqtt}.py \
+    $DIR/mqrepl/watchdog.py \
     :/safemode/
 
 if [[ "$(pyboard.py -f ls)" != *board_config.py* ]]; then

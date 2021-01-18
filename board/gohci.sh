@@ -22,7 +22,7 @@ if [[ "$out" != $exp ]]; then
 	exit 1
 fi
 out=$(pyboard.py -f ls /safemode/)
-exp='*board.py*board_config.py*logging.py*main.py*mqrepl.py*mqtt_async.py*watchdog*'
+exp='*board.py*board_config.py*main.py*watchdog*'
 if [[ "$out" != $exp ]]; then
 	echo OOPS, expected $exp, got: "$out"
 	exit 1
@@ -40,7 +40,7 @@ echo did reset
 
 echo "----- test boot -----"
 out=$(timeout 6s pyboard.py test-boot.py)
-if [[ "$out" == *OOPS* || "$out" != *"SAFE MODE"*"Reset cause: SOFT_RESET"* ]]; then
+if [[ "$out" == *OOPS* || "$out" != *"SAFE MODE"*"Reset cause: HARD_RESET"* ]]; then
 	echo OOPS, got: "$out"
 	exit 1
 fi
