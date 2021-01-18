@@ -11,7 +11,9 @@
 # The imports below are a little tricky in order to support operation under Micropython as well as
 # Linux CPython. The latter is used for tests.
 
-import socket, struct, sys
+import socket
+import struct
+import sys
 from binascii import hexlify
 from errno import EINPROGRESS
 
@@ -25,23 +27,21 @@ try:
     async def open_connection(addr, ssl):
         return (await asyncio.open_connection(addr[0], addr[1], ssl=ssl))[0]
 
-    # gc.collect()
     try:
         from machine import unique_id
 
-        # gc.collect()
         import network
 
         STA_IF = network.WLAN(network.STA_IF)
-    except:
+    except ImportError:
         # work-arounds on unix micropython
         from unix_fix import *
-    # gc.collect()
+
     def is_awaitable(f):
         return f.__class__.__name__ == "generator"
 
 
-except:
+except ImportError:
     # Imports used with CPython (moved to another file so they don't appear on MP HW)
     from cpy_fix import *
 
@@ -49,7 +49,7 @@ try:
     import logging
 
     log = logging.getLogger(__name__)
-except:
+except ImportError:
 
     class Logger:  # please upip.install('logging')
         def debug(self, msg, *args):
@@ -66,18 +66,18 @@ except:
 # Timing parameters and constants
 
 # Response time of the broker to requests, such as pings, before MQTTClient deems the connection
-# to be broken and tries to reconnect. MQTTClient issues an explicit ping if there is no outstanding
-# request to the broker for half the response time. This means that if the connection breaks and
-# there is no outstanding request it could take up to 1.5x the response time until MQTTClient
-# notices.
+# to be broken and tries to reconnect. MQTTClient issues an explicit ping if there is no
+# outstanding request to the broker for half the response time. This means that if the connection
+# breaks and there is no outstanding request it could take up to 1.5x the response time until
+# MQTTClient notices.
 # Specified in MQTTConfig.response_time, suggested to be in the range of 60s to a few minutes.
 
 # Connection time-out when establishing an MQTT connection to the broker:
 # Specified in MQTTConfig.conn_timeout in seconds
 
 # Keepalive interval with broker per MQTT spec. Determines at what point the broker sends the last
-# will message. Pretty much irrelevant if no last-will message is set. This interval must be greater
-# than 2x the response time.
+# will message. Pretty much irrelevant if no last-will message is set. This interval must be
+# greater than 2x the response time.
 # Specified in MQTTConfig.keepalive
 
 # Default long delay in seconds when waiting for a connection to be re-established.
@@ -113,6 +113,7 @@ config = {
     # "listen_interval" : 0,               # Wifi listen interval for power save
     # "conn_timeout"    : 120,             # in seconds
 }
+
 
 # set_last_will records the last will into the config, the last will is transmitted to the broker
 # on connect
@@ -171,8 +172,8 @@ class MQTTProto:
     # connect initiates a connection to the broker at addr.
     # Addr should be the result of a gethostbyname (typ. an ip-address and port tuple).
     # The clean parameter corresponds to the MQTT clean connection attribute.
-    # Connect waits for the connection to get established and for the broker to ACK the connect packet.
-    # It raises an OSError if the connection cannot be made.
+    # Connect waits for the connection to get established and for the broker to ACK the connect
+    # packet.  It raises an OSError if the connection cannot be made.
     # Reusing an MQTTProto for a second connection is not recommended.
     async def connect(
         self, addr, client_id, clean, user=None, pwd=None, ssl=None, keepalive=0, lw=None
@@ -183,8 +184,8 @@ class MQTTProto:
         log.debug("user=%s passwd-len=%s ssl=%s", user, pwd and len(pwd), ssl)
         try:
             # in principle, open_connection returns a (reader,writer) stream tuple, but in MP it
-            # really returns a bidirectional stream twice, so we cheat and use only one of the tuple
-            # values for everything.
+            # really returns a bidirectional stream twice, so we cheat and use only one of the
+            # tuple values for everything.
             self._sock = await open_connection(addr, ssl)
         except OSError as e:
             if e.args[0] != EINPROGRESS:
@@ -344,7 +345,7 @@ class MQTTProto:
                 await asyncio.wait_for(
                     self._sock.drain(), 0.2
                 )  # 200ms to make sure ipoll gets a chance
-        except:
+        except Exception:
             pass
         if self._sock is not None:
             self._sock.close()
@@ -374,21 +375,21 @@ class MQTTProto:
         else:
             pkt = bytearray(hdrlen)
         pkt[0] = 0x30 | msg.qos << 1 | msg.retain | dup << 3
-        l = self._write_varint(pkt, 1, sz)
-        struct.pack_into("!H", pkt, l, len(msg.topic))
-        l += 2
-        pkt[l : l + len(msg.topic)] = msg.topic
-        l += len(msg.topic)
+        length = self._write_varint(pkt, 1, sz)
+        struct.pack_into("!H", pkt, length, len(msg.topic))
+        length += 2
+        pkt[length: length + len(msg.topic)] = msg.topic
+        length += len(msg.topic)
         if msg.qos > 0:
-            struct.pack_into("!H", pkt, l, msg.pid)
-            l += 2
+            struct.pack_into("!H", pkt, length, msg.pid)
+            length += 2
         # send header and body
         async with self._lock:
             if single:
-                pkt[l:] = msg.message
+                pkt[length:] = msg.message
                 await self._as_write(pkt)
             else:
-                await self._as_write(pkt[:l])
+                await self._as_write(pkt[:length])
                 await self._as_write(msg.message)
 
     # subscribe sends a subscription message.
@@ -403,6 +404,16 @@ class MQTTProto:
             await self._as_write(pkt, drain=False)
             await self._send_str(topic, drain=False)
             await self._as_write(qos.to_bytes(1, "little"))
+
+    #   # unsubscribe sends an unsubscription message.
+    #   async def unsubscribe(self, topic, pid):
+    #       pkt = bytearray(b"\xA2\0\0\0")
+    #       if isinstance(topic, str):
+    #           topic = topic.encode()
+    #       struct.pack_into("!BH", pkt, 1, 2 + 2 + len(topic), pid)
+    #       async with self._lock:
+    #           await self._as_write(pkt, drain=False)
+    #           await self._send_str(topic)
 
     # Read a single MQTT message and process it.
     # Subscribed messages are delivered to a callback previously set by .setup() method.
@@ -481,6 +492,7 @@ class MQTTProto:
 
 PING_PID = const(100000)  # fake pid used in handling of ping acks
 
+
 # MQTTClient class.
 class MQTTClient:
     def __init__(self, conf):
@@ -550,7 +562,8 @@ class MQTTClient:
             s.active(True)
             # log.debug("Connecting, li=%d", self._c["listen_interval"])
             s.connect(self._c["ssid"], self._c["wifi_pw"])
-            # s.connect(self._c["ssid"], self._c["wifi_pw"], listen_interval=self._c["listen_interval"])
+            #  s.connect(self._c["ssid"], self._c["wifi_pw"],
+            #            listen_interval=self._c["listen_interval"])
             if sys.platform == "pyboard":  # Doesn't yet have STAT_CONNECTING constant
                 while s.status() in (1, 2):
                     await asyncio.sleep(_CONN_DELAY)
