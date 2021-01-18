@@ -75,42 +75,49 @@ def main():  # function keeps global namespace clean
 
     if hasattr(board, "modules") and board.modules:
         from mqtt import MQTT
-        from uasyncio import Loop as loop
+        from uasyncio import sleep_ms, Loop as loop
+        from esp32 import idf_heap_info, HEAP_DATA
 
         # global default asyncio exception handler
         def def_exception_handler(loop, context):
-            log.error(context["message"])
+            log.error("Task exception: %s", context["message"])
             log.exc(
                 context["exception"],
                 "coro: %s; future: %s",
-                context["future"].coro,
+                context["future"].coro.coro,
                 context["future"],
             )
+
         def lm():
             log.info("MEM free=%d contig=%d", gc.mem_free(), gc.mem_maxfree())
+            log.info("IDF %s", [h[2] for h in idf_heap_info(HEAP_DATA) if h[2] > 0])
 
         loop.set_exception_handler(def_exception_handler)
         lm()
 
-        for name in board.modules:
-            try:
-                log.info("Loading %s" % name)
-                mod = __import__(name)
-                fun = getattr(mod, "start", None)
-                if fun:
-                    config = getattr(board, name, {})
-                    log.info("  config: [%s]", ", ".join(iter(config)))
-                    lvl = config.pop("log", None)
-                    if lvl:
-                        logging.getLogger(name).setLevel(lvl)
-                    fun(MQTT, config)
-            except ImportError as e:
-                log.error(str(e))
-            except Exception as e:
-                log.exc(e, "Cannot start %s: ", name)
-            lm()
-        # micropython.mem_info()
-        #
+        # the loader task iterates through the modules (typ from board_config) and starts each one
+        async def loader():
+            for name in board.modules:
+                try:
+                    log.info("Loading %s" % name)
+                    mod = __import__(name)  # load the module by name
+                    await sleep_ms(0)
+                    fun = getattr(mod, "start", None)  # check whether the module has a start()
+                    if fun:
+                        config = getattr(board, name, {})  # check whether we got a config for this
+                        log.info("  config: [%s]", ", ".join(iter(config)))
+                        lvl = config.pop("log", None)
+                        if lvl:
+                            logging.getLogger(name).setLevel(lvl)
+                        fun(MQTT, config)  # call the module's start() function
+                        await sleep_ms(0)
+                except ImportError as e:
+                    log.error(str(e))
+                except Exception as e:
+                    log.exc(e, "Cannot start %s: ", name)
+                lm()
+
+        loop.create_task(loader())
         log.warning("Starting asyncio loop")
         loop.run_forever()
 
