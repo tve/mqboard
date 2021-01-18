@@ -29,7 +29,7 @@ def feed():
             part.mark_app_valid_cancel_rollback()
         if safemode:
             log.critical("Switching to NORMAL MODE via reset")
-            reset(True)
+            reset("n")
         else:
             log.warning("Next reset: normal boot")
             normalboot(True)
@@ -59,6 +59,7 @@ def normalboot(normal):
     else:
         struct.pack_into("HH", mem, 0, 0, 0)
     rtc.memory(mem)
+    print("normalboot()")
 
 
 # reset performs a delayed reset to allow logging time to send a farewell
@@ -68,6 +69,7 @@ def reset(mode):
     async def zap():
         await asyncio.sleep_ms(1000)
         if mode == "s":
+            print("soft_reset()")
             machine.soft_reset()
         else:
             machine.reset()
@@ -93,3 +95,18 @@ def start(mqtt, config):
     __main__.GLOBALS()["watchdog"] = sys.modules["watchdog"]
     # Feeder starts once we're connected
     mqtt.on_init(init(mqtt.client, config["prefix"]))
+
+# ===== Task watchdog
+
+async def watcher(name, coro, relaunch=True):
+    while True:
+        try:
+            await coro
+        except Exception as e:
+            what = "relaunching" if relaunch else "rebooting"
+            log.exc(e, "Task %s died: %s", (name, what))
+            if not relaunch:
+                reset("x")
+
+def create_watched_task(name, coro, relaunch=True):
+    return asyncio.Loop.create_task(watcher(name, coro, relaunch))

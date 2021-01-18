@@ -258,6 +258,8 @@ class MQTTLog:
     # and starts the regular runner/flusher
     @classmethod
     async def connected(cls, mqtt, config):
+        from watchdog import create_watched_task
+
         topic = config["topic"]
         getLogger("main").info("Logging to %s", topic)
         # flush what we'd need cut due to resize
@@ -271,7 +273,7 @@ class MQTTLog:
         )
         getLogger("main").info("Log buf: %d/%d bytes", cls._qlen, cls._qmax)
         # launch regular flusher
-        loop.create_task(MQTTLog.run(mqtt.client, topic))
+        create_watched_task("mqtt-logger", MQTTLog.run(mqtt.client, topic))
 
 
 # start is called when the module is loaded, just save the config and register on_init CB
