@@ -3,7 +3,8 @@
 # This is a modified version of the micropython-lib logging module with the addition
 # of being able to log to MQTT.
 
-import sys, io
+import sys
+import io
 
 
 try:
@@ -74,9 +75,9 @@ class Logger(io.IOBase):
         self.wbuf = b""
 
     def _level_str(self, level):
-        l = _level_dict.get(level)
-        if l is not None:
-            return l
+        lev = _level_dict.get(level)
+        if lev is not None:
+            return lev
         return "LVL%d" % level
 
     def setLevel(self, level):
@@ -92,7 +93,7 @@ class Logger(io.IOBase):
         if _hour_ticks is None or ticks_diff(t, _hour_ticks) > TICKS_PER_HOUR:
             tm = time()
             if tm < TIME_2020:  # we don't know the time
-                return str(t%100000000)
+                return str(t % 100000000)
             tm = localtime(tm)
             _hour = tm[3]
             _hour_ticks = ticks_add(t, -(((tm[4] * 60) + tm[5]) * 1000))
@@ -152,8 +153,8 @@ class Logger(io.IOBase):
             return
         lines = (self.wbuf + buf).split(b"\n")
         self.wbuf = lines[-1]
-        for l in lines[:-1]:
-            self.log(ERROR, l)
+        for lel in lines[:-1]:
+            self.log(ERROR, lel)
 
 
 _level = INFO
@@ -163,9 +164,9 @@ _loggers = {}
 def getLogger(name):
     if name in _loggers:
         return _loggers[name]
-    l = Logger(name)
-    _loggers[name] = l
-    return l
+    lev = Logger(name)
+    _loggers[name] = lev
+    return lev
 
 
 def info(msg, *args):
@@ -252,7 +253,7 @@ class MQTTLog:
             cls._ev.clear()
             await cls._ev.wait()
 
-    # connected is called when the first bropker connection is established, it flushes excess
+    # connected is called when the first broker connection is established, it flushes excess
     # saved messages while blocking further inits by other modules, then resizes the log storage,
     # and starts the regular runner/flusher
     @classmethod
@@ -262,7 +263,7 @@ class MQTTLog:
         # flush what we'd need cut due to resize
         maxsize = config.get("loop_sz", 1400)
         getLogger("main").info("Log buf: %d/%d bytes", cls._qlen, cls._qmax)
-        while cls._qlen > maxsize*3//4:
+        while cls._qlen > maxsize * 3 // 4:
             await cls.push(mqtt.client, topic)
         # re-init including resize
         MQTTLog.init(

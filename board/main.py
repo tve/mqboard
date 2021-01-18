@@ -1,9 +1,14 @@
 # main.py - safemode, watchdog, and modular asyncio task launcher
-# Copyright © 2020 by Thorsten von Eicken.
+# Copyright ©2020 by Thorsten von Eicken.
 
 # some of these are not used here, but they stay in the global env used by mqrepl, which is handy
-import gc, sys, machine, os, time, micropython
-import logging, board
+import gc
+import sys
+import machine
+import os
+import time
+import logging
+import board
 
 # If board config defines logging_config then init logging to buffer the boot messages.
 # Logging will be re-initialized once main calls it's start() function.
@@ -25,15 +30,20 @@ del _u
 del _uname
 
 # log some info
-if sys.platform == 'esp32':
+if sys.platform == "esp32":
     import esp32
+
     log.warning("Boot partition: %s", esp32.Partition(esp32.Partition.RUNNING).info()[4])
-_sf = "SAFE MODE boot "
-if not "_safestate" in globals():  # this only happens in CI
+
+# log boot mode info
+_sf = "Normal mode boot "
+if "/safemode" in sys.path:
+    _sf = "SAFE MODE boot "
+if "_safestate" not in globals():  # this only happens in CI
     _safestate = "Test mode"
     safemode = True
 elif _safestate == 2:
-    _safestate = "Normal mode boot"
+    _safestate = _sf + "(good magic)"
 elif _safestate == 1:
     _safestate = _sf + "(hard reset)"
 elif _safestate == 3:
@@ -56,7 +66,6 @@ else:
     log.warning("Reset cause: %s", cnum)
 del cnum
 del n
-
 
 # main launches asyncio modules/tasks
 def main():  # function keeps global namespace clean
