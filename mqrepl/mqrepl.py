@@ -50,6 +50,7 @@ if sys.platform == "esp32":
                 raise ValueError("missing first message")
             elif self.seq < seq:
                 # "duplicate message"
+                log.warning("Duplicate OTA message seq=%d", seq)
                 return None
             elif self.seq > seq:
                 raise ValueError("message missing")
@@ -329,7 +330,7 @@ class MQRepl:
                     loop.create_task(self._send_stream(rtopic, resp))
                 else:
                     log.debug("pub {} -> {}".format(len(resp), rtopic))
-                    loop.create_task(self.mqclient.publish(rtopic, b"\x80\0" + resp, qos=1))
+                    loop.create_task(self.mqclient.publish(rtopic, b"\xff\xff" + resp, qos=1))
             except ValueError as e:
                 buf = "MQRepl protocol error {}: {}".format(cmd, e.args[0])
                 loop.create_task(self.mqclient.publish(errtopic, buf, qos=1))

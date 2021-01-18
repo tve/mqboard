@@ -65,7 +65,7 @@ async def test_eval_cmd():
     print("publishing to", topic)
     mqtt.msg_cb(topic, b"\x80\x001+3", False, 1, 0)
     await asyncio.sleep_ms(50)
-    if mqclient.pub and mqclient.pub[1] == b"\x80\x004" and mqclient.pub[3] == 1:
+    if mqclient.pub and mqclient.pub[1] == b"\xff\xff4" and mqclient.pub[3] == 1:
         print("eval command OK")
     else:
         print("eval FAILED:", mqclient.pub)

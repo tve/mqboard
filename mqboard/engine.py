@@ -89,16 +89,18 @@ class MQTT:
                 return
             seq = ((msg.payload[0] & 0x7F) << 8) | msg.payload[1]
             last = (msg.payload[0] & 0x80) != 0
-            #self.debug(f"seq={seq} last={last} payload-len={len(msg.payload)}")
+            # self.debug(f"seq={seq} last={last} payload-len={len(msg.payload)}")
+            self.debug(f"msg=<{msg.payload}>")
             # check sequence number
-            if seq < next_seq:
-                self.debug(f"Duplicate message, expected seq={next_seq}, got {seq}")
-                return
-            if seq > next_seq:
-                raise click.ClickException(
-                    f"Missing message(s), expected seq={next_seq}, got {seq}"
-                )
-            next_seq = seq+1
+            if seq != 0x7fff:
+                if seq < next_seq:
+                    self.debug(f"Duplicate message, expected seq={next_seq}, got {seq}")
+                    return
+                if seq > next_seq:
+                    raise click.ClickException(
+                        f"Missing message(s), expected seq={next_seq}, got {seq}"
+                    )
+                next_seq = seq + 1
             # handle ACK for long streams (a bit of a hack!)
             if len(msg.payload) - 2 < 10 and msg.payload[2:].startswith(b"SEQ "):
                 try:
@@ -169,6 +171,8 @@ class MQTT:
             sz += len(buf)
             self.debug(f"Pub {cmd_topic} #{seq} last={last} len={len(buf)}")
             self._mqclient.publish(cmd_topic, buf, qos=1)
+            #if seq % 4 == 3:
+            #    time.sleep(0.1)  # mosquitto swallows messages if we don't do this !?
             seq += 1
             loop()
             if len(msg) == 0:
