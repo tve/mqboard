@@ -6,6 +6,12 @@ from pprint import pprint
 from glob import glob
 import click
 import dirops
+from pathlib import Path
+import subprocess
+
+# how to invoke mpy-cross, can be changed in spec using "mpy-cross: <mpy_cross path> <options...>"
+mpy_cross = ["mpy-cross", "-march=xtensawin"]
+
 
 def file_hash(fn):
     sha = hashlib.sha1()
@@ -16,11 +22,13 @@ def file_hash(fn):
                 return sha.hexdigest()
             sha.update(buf)
 
+
 # parse_spec parses the input read from fd (which must have a readline method) and return the spec
 def parse_spec(infile):
     spec = {}
     lnum = 0
     tgt_dir = None
+    tgt_opts = {}
     for line in infile:
         lnum += 1
         comment = line.find("#")
@@ -58,21 +66,28 @@ def parse_spec(infile):
             if len(tok) == 0 or not tok[0].endswith(":"):
                 raise ValueError("line %d: expected target directory followed by colon" % lnum)
             tgt_dir = tok.pop(0)[:-1].rstrip()
+            if tgt_dir == "mpy-cross":  # hack!
+                global mpy_cross
+                mpy_cross = tok
+                continue
             tgt_opts = {}
             for t in tok:
                 if t == "--check-only":
                     tgt_opts["check-only"] = True
                 elif t == "--no-update":
                     tgt_opts["no-update"] = True
+                elif t == "--mpy":
+                    tgt_opts["mpy"] = True
+                else:
+                    click.echo(f"unrecognized option: {t}")
     return spec
-
 
 
 # get_actions returns a list of actions to take to bring the target dir up to date.
 # It executes remote commands to retrieve SHA1 hashes and also generates local SHA1 hashes.
 def get_actions(engine, dir, src):
     actions = []
-    #print("Target directory", dir)
+    # print("Target directory", dir)
     # invoke ls command to get SHA1's of files on the board
     try:
         result = dirops.do_ls(engine, directory=dir, recursive=False, sha=True)
@@ -96,7 +111,18 @@ def get_actions(engine, dir, src):
     for src_file, tgt_file, tgt_opts in src_files:
         if "/" in tgt_file:
             tgt_file = tgt_file[tgt_file.rindex("/") + 1 :]
-        # print("Evaluating", src_file, "->", tgt_file)
+        if tgt_opts.get("mpy", False) and tgt_file.endswith(".py"):
+            tgt_file = tgt_file[:-3] + ".mpy"
+        #print("Evaluating", src_file, "->", tgt_file)
+        # if this is a .py -> .mpy transfer, make sure we've got the mpy locally
+        if src_file.endswith(".py") and tgt_file.endswith(".mpy"):
+            mpy_file = ".mpy/" + tgt_file
+            mpy_path = Path(mpy_file)
+            mpy_path.parent.mkdir(exist_ok=True)
+            if not mpy_path.is_file() or Path(src_file).stat().st_mtime > mpy_path.stat().st_mtime:
+                subprocess.run(mpy_cross + ["-o", mpy_file, src_file])
+            src_file = mpy_file
+        # now..
         why = "missing"
         if tgt_file in tgt_files:
             try:
@@ -108,7 +134,7 @@ def get_actions(engine, dir, src):
                 continue
             why = "shadiff"
             # print("  SHA MISMATCH src=%s dst=%s" % (src_sha1, tgt_files[tgt_file]))
-        tgt_file = dir + ("/" if not dir.endswith('/') else "") + tgt_file
+        tgt_file = dir + ("/" if not dir.endswith("/") else "") + tgt_file
         # print("  %s %s -> %s" % (why, src_file, tgt_file))
         if tgt_opts.get("check-only", False):
             actions.append(("skip", src_file, tgt_file, why))
@@ -132,9 +158,10 @@ def sync(ctx, spec, dry_run):
     engine = ctx.obj["engine"]
     do_sync(engine, spec, dry_run)
 
+
 def do_sync(engine, spec, dry_run):
     spec = parse_spec(spec)
-    #pprint(spec)
+    # pprint(spec)
 
     for dir, src in spec.items():
         click.echo(f"Target directory {dir}")
