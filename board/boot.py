@@ -1,10 +1,14 @@
 # boot.py - handle safemode, start the watchdog and logging
-# Copyright © 2020 by Thorsten von Eicken.
+# Copyright ©2020 by Thorsten von Eicken.
 
-import gc, sys, machine, os
+import gc
+import sys
+import machine
+import os
 
 # set a GC threshold early on to reduce heap fragmentation woes
 gc.threshold(4096)
+
 
 # safe-mode
 #
@@ -48,7 +52,8 @@ machine.WDT(timeout=70000)  # watchdog task has about one minute to start and ch
 # Import logging and board; the except clause gets triggered on a fresh board when only the
 # safemode directory is populated and it shortens the time to the WDT timeout to do a soft reset
 try:
-    import logging, board
+    import logging
+    import board
 except ImportError as e:
     sys.print_exception(e)
     if not safemode:
@@ -58,11 +63,13 @@ except ImportError as e:
         sys.path[:] = ["/safemode", ""]
         os.chdir("/safemode")
         print("Switching to SAFE MODE")
-        import logging, board
+        import logging
+        import board
 
 # convenience for interactive use and CI tests to bring up wifi
 if hasattr(board, "connect_wifi"):
     connect_wifi = board.connect_wifi
+
 
 # make __main__ globals accessible for exec/eval purposes
 def GLOBALS():
