@@ -3,11 +3,18 @@
 #
 # Requires mqtt_async for asyncio-based MQTT.
 
-import io, os, sys, time, struct, gc, micropython
+import io
+import os
+import sys
+import time
+import struct
+import gc
 from uasyncio import Loop as loop
 import uhashlib as hashlib
 import ubinascii as binascii
 import logging
+from micropython import const
+
 
 log = logging.getLogger(__name__)
 # log.setLevel(logging.DEBUG)
@@ -17,9 +24,11 @@ PKTLEN = 1400  # data bytes that reasonably fit into a TCP packet
 BUFLEN = PKTLEN * 2  # good number of data bytes to stream files
 ERR_SINGLEMSG = "only single message supported"
 
-if sys.platform == 'esp32':
+if sys.platform == "esp32":
     from esp32 import Partition
+
     BLOCKLEN = const(4096)  # data bytes in a flash block
+
     # OTA manages a MicroPython firmware update over-the-air.
     # It assumes that there are two "app" partitions in the partition table and updates the one
     # that is not currently running. When the update is complete, it sets the new partition as
@@ -71,7 +80,7 @@ if sys.platform == 'esp32':
             if last:
                 return self.finish(sha)
             elif (seq & 7) == 0:
-                # print("Sending ACK {}".format(seq))
+                # log.info("Sending ACK {}".format(seq))
                 return "SEQ {}".format(seq).encode()
 
         def finish(self, check_sha):
@@ -86,7 +95,7 @@ if sys.platform == 'esp32':
 
 
 # LogWriter is a helper class that sends text line-wise to a logger (logging module).
-#class LogWriter(io.IOBase):
+# class LogWriter(io.IOBase):
 #    def __init__(self, logger, level):
 #        self._logger = logger
 #        self._level = level
@@ -138,39 +147,39 @@ class MQRepl:
         await mqtt.client.subscribe(topic, qos=1)  # TODO: should this be made async?
         log.info("Subscribed to %s", topic)
 
-    #def stop(self):
+    # def stop(self):
     #    # TODO: this should unsubscribe and remove the on_msg handler, but is this ever used?
     #    pass
 
     # Handlers for commands
 
-    # do_eval receives an expression in cmd, runs it through the interpreter and returns
-    # the result using repr()
-    def _do_eval_xx(self, fname, cmd, seq, last):
-        if seq != 0 or not last:
-            raise ValueError(ERR_SINGLEMSG)
-        cmd = str(cmd, "utf-8")
-        log.debug("eval %s", cmd)
-        op = compile(cmd, "<eval>", "eval")
-        result = eval(op, globals(), None)
-        return repr(result)
+    # # do_eval receives an expression in cmd, runs it through the interpreter and returns
+    # # the result using repr()
+    # def _do_eval_xx(self, fname, cmd, seq, last):
+    #     if seq != 0 or not last:
+    #         raise ValueError(ERR_SINGLEMSG)
+    #     cmd = str(cmd, "utf-8")
+    #     log.debug("eval %s", cmd)
+    #     op = compile(cmd, "<eval>", "eval")
+    #     result = eval(op, globals(), None)
+    #     return repr(result)
 
-    # do_exec receives a command line in cmd, runs it through the interpreter and returns
-    # the resulting output
-    def _do_exec_xx(self, fname, cmd, seq, last):
-        if seq != 0 or not last:
-            raise ValueError(ERR_SINGLEMSG)
-        cmd = str(cmd, "utf-8")
-        log.debug("exec %s", cmd)
-        outbuf = io.BytesIO(BUFLEN)  # FIXME: need to stream output back
-        old_term = os.dupterm(outbuf)
-        try:
-            op = compile(cmd, "<exec>", "exec")
-            eval(op, globals(), None)
-            time.sleep_ms(5)  # necessary to capture all output?
-            return outbuf.getvalue()
-        finally:
-            os.dupterm(old_term)
+    # # do_exec receives a command line in cmd, runs it through the interpreter and returns
+    # # the resulting output
+    # def _do_exec_xx(self, fname, cmd, seq, last):
+    #     if seq != 0 or not last:
+    #         raise ValueError(ERR_SINGLEMSG)
+    #     cmd = str(cmd, "utf-8")
+    #     log.debug("exec %s", cmd)
+    #     outbuf = io.BytesIO(BUFLEN)  # FIXME: need to stream output back
+    #     old_term = os.dupterm(outbuf)
+    #     try:
+    #         op = compile(cmd, "<exec>", "exec")
+    #         eval(op, globals(), None)
+    #         time.sleep_ms(5)  # necessary to capture all output?
+    #         return outbuf.getvalue()
+    #     finally:
+    #         os.dupterm(old_term)
 
     def _do_eval(self, fname, cmd, seq, last):  # read_msg, msg_len):
         if seq != 0 or not last:
@@ -206,7 +215,7 @@ class MQRepl:
     # FIXME: properly guard against concurrent PUTs
     def _do_put(self, fname, msg, seq, last):
         if seq == 0:
-            if self._put_fd != None:
+            if self._put_fd is not None:
                 self._put_fd.close()
             self._put_fd = open(fname, "wb")
             self._put_seq = 1  # next seq expected
@@ -229,7 +238,7 @@ class MQRepl:
     # do_ota uploads a new firmware over-the-air and activates it for the next boot
     # the fname passed in must be the sha256 of the firmware
     def _do_ota(self, fname, msg, seq, last):
-        if sys.platform != 'esp32':
+        if sys.platform != "esp32":
             raise ValueError("N/A")
         if seq == 0:
             self._ota = OTA()
@@ -237,6 +246,7 @@ class MQRepl:
             ret = self._ota.handle(fname, msg, seq, last)
             if last:
                 self._ota = None
+            # log.info("OTA ret=%s", ret)
             gc.collect()  # needed!
             return ret
 
@@ -298,7 +308,7 @@ class MQRepl:
             # for each inbound message we end up loosing log messages because we can't get them out
             # as fast as new ones arrive. This always happens during OTA. Hence we stop logging
             # every message...
-            if seq < 4 or last or seq & 0xf == 0:
+            if seq < 4 or last or seq & 0xF == 0:
                 log.info(
                     "Dispatch %s, msglen=%d seq=%d last=%s id=%s dup=%s",
                     cmd,
@@ -331,7 +341,7 @@ class MQRepl:
                 sys.print_exception(e, errbuf)
                 errbuf = errbuf.getvalue()
                 loop.create_task(self.mqclient.publish(errtopic, errbuf, qos=1))
-                #micropython.mem_info()
+                # micropython.mem_info()
 
 
 def start(mqtt, config):
