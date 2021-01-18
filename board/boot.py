@@ -20,6 +20,7 @@ def _safemode_state():
     # get magic value from RTC memory and check it out, avoid constructing a big-int
     rtc = machine.RTC()
     m = rtc.memory()
+    # print("RTC mem:", m)
     if len(m) < 4:
         # write RTC with magic value cleared so we enter safemode if this boot fails
         w = bytearray(4)
@@ -41,6 +42,9 @@ del _safemode_state
 if safemode:
     sys.path[:] = ["/safemode", ""]
     os.chdir("/safemode")  # required to get main.py from /safemode, sigh
+    print("SAFE MODE")
+else:
+    sys.path[:] = ["", "/lib"]  # set explicitly for now due to bug in cmake builds
 # print("safestate:", _safestate, "safemode:", safemode, "cwd:", os.getcwd())
 
 # watchdog
@@ -51,6 +55,9 @@ machine.WDT(timeout=70000)  # watchdog task has about one minute to start and ch
 
 # Import logging and board; the except clause gets triggered on a fresh board when only the
 # safemode directory is populated and it shortens the time to the WDT timeout to do a soft reset
+#print("path:", sys.path)
+#for d in sys.path:
+#    print(d, ":", os.listdir(d))
 try:
     import logging
     import board
