@@ -336,8 +336,12 @@ class MQRepl:
                 loop.create_task(self.mqclient.publish(errtopic, buf, qos=1))
             except Exception as e:
                 log.warning("Exception in %s: %s", cmd, e)
-                #lw = LogWriter(log.log, logging.WARNING)
-                #sys.print_exception(e, lw)
+                # sys.print_exception(e)
+                # if this is a memory error just return, logging more runs out of memory again...
+                if isinstance(e, MemoryError):
+                    return
+                # lw = LogWriter(log.log, logging.WARNING)
+                # sys.print_exception(e, lw)
                 errbuf = io.BytesIO(PKTLEN)
                 sys.print_exception(e, errbuf)
                 errbuf = errbuf.getvalue()
