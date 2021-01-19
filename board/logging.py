@@ -65,6 +65,11 @@ _hour = None
 TICKS_PER_HOUR = const(3600 * 1000)
 TIME_2020 = const(631180800)  # time.mktime((2020,1,1,0,0,0,0,0,0))
 
+# clear cached stuff, such as ticks_ms at top of hour and current hour
+def clear_cache():
+    global _hour_ticks
+    _hour_ticks = None
+
 
 class Logger(io.IOBase):
 
