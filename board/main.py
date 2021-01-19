@@ -29,11 +29,47 @@ log.warning("%s %s starting at %s\n", _u, str(board.location), time.localtime())
 del _u
 del _uname
 
-# log some info
+# log some info and check any heap constraints given in the config
 if sys.platform == "esp32":
     import esp32
 
     log.warning("Boot partition: %s", esp32.Partition(esp32.Partition.RUNNING).info()[4])
+
+    # heap constraints, see docs https://github.com/tve/micropython/blob/esp32-set-heapsize/docs/esp32/quickref.rst#controlling-the-python-heap-size
+    # FIXME: if machine.reset() gets called we end up in safeboot mode, which is not ideal
+    # probably the whole thing needs to be moved out of main and be done later when the
+    # watchdog can be used to reboot into the same mode
+    min_idf_heap = getattr(board, "min_idf_heap", None)
+    max_mp_heap = getattr(board, "max_mp_heap", None)
+    if min_idf_heap or max_mp_heap:
+        try:
+            from esp32 import NVS, idf_heap_info
+            nvs = NVS("micropython")
+            reset=False
+            # minimum IDF heap size
+            if min_idf_heap:
+                try: mih = nvs.get_i32("min_idf_heap")
+                except: mih = None
+                print("mih", mih, "min_idf_heap", min_idf_heap)
+                if mih != min_idf_heap:
+                    nvs.set_i32("min_idf_heap", min_idf_heap)
+                    reset= True
+            # maximum MP heap size
+            if max_mp_heap:
+                try: mmh = nvs.get_i32("max_mp_heap")
+                except: mmh = None
+                print("mmh", mmh, "max_mp_heap", max_mp_heap)
+                if mmh != max_mp_heap:
+                    nvs.set_i32("max_mp_heap", max_mp_heap)
+                    reset= True
+            # print some info
+            if reset:
+                log.warning("Resetting to fix heap size")
+                nvs.commit()
+                machine.reset()
+
+        except Exception as e:
+            log.exc(e, "No heap size control")
 
 # log boot mode info
 _sf = "Normal mode boot "
