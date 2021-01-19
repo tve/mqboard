@@ -15,8 +15,16 @@ does not contain any real code, just settings. This also makes it easy to mainta
 repository because everything but this one file can be made public without worrying about
 information leakage.
 
-Specifically, everything in this repo is common to all boards, except for the `board_config.py`
-file, which is missing, and for which a template is provided in `board_config_tmpl.py`.
+__Update__: well, _almost_... I ended up splitting the single `board_config.py` file into two
+files...
+The reason is git/github. The `board_config.py` ends up containing two types of settings:
+configurations that can be published and secrets (passwords/keys) that must not be published.
+So now there's `board_config.py` and `board_secrets.py`, the former being publishable and
+the latter remaining secret.
+
+With this update, everything in this repo is common to all boards, except for the `board_config.py`
+and the `board_secrets.py` files. The latter is not checked in to this repo but a template
+is provided in `board_secrets_tmpl.py`.
 
 ## Launching asyncio tasks
 
