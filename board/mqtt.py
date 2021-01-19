@@ -84,6 +84,19 @@ class MQTT:
 def start(cls, config):
     from mqtt_async import MQTTClient
 
+    # set the dhcp hostname so this esp32 can be identified when looking at the router/dhc server
+    # this is a hack for now, what should probably be done is to pull wifi_connect out of mqtt_async
+    # and put that somewhere it can be customized easily.
+    hn = config.get("dhcp_hostname") or config.get("user") or config.get("client_id")
+    if hn:
+        from network import WLAN, STA_IF
+        import ure as re
+        wlan = WLAN(STA_IF)
+        wlan.active(True)
+        hn = re.sub("[^a-zA-Z0-9]", "-", hn)
+        log.info("Setting dhcp hostname to %s", hn)
+        wlan.config(dhcp_hostname=hn)
+
     config["subs_cb"] = cls._msg_handler
     config["wifi_coro"] = cls._mqtt_handler
     config["connect_coro"] = cls._init_handler
