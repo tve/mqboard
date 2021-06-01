@@ -15,7 +15,7 @@ def ticks():
 
 # MQTT is the engine for performing commands over ... MQTT
 class MQTT:
-    def __init__(self, server, port, tls, topic, timeout, debug):
+    def __init__(self, server, port, tls, username, password, topic, timeout, debug):
         self._server = server
         if not port:
             port = 8883 if tls else 1883
@@ -30,6 +30,8 @@ class MQTT:
         # _mqclient.enable_logger(logging.getLogger("paho-mqtt"))
         if tls:
             self._mqclient.tls_set()
+        if username:
+            self._mqclient.username_pw_set(username, password)
 
     def debug(self, msg):
         if self._debug:
