@@ -12,13 +12,13 @@ import mqboard, engine, sync
 @click.argument("spec", type=click.File("r"), metavar="SPEC_FILE")
 @mqboard.global_opts
 @click.pass_context
-def cli(ctx, server, port, tls, timeout, verbose, prefix, topic, dry_run, spec):
+def cli(ctx, server, port, tls, username, password, timeout, verbose, prefix, topic, dry_run, spec):
     """mqsync - MQTT MicroPython File Synchronization Tool
 
     """
     ctx.ensure_object(dict)
     topic = mqboard.get_topic(prefix, topic)
-    eng = engine.MQTT(server, port, tls, topic, timeout, verbose)
+    eng = engine.MQTT(server, port, tls, username, password, topic, timeout, verbose)
     sync.do_sync(eng, spec, dry_run)
 
 if __name__ == "__main__":
