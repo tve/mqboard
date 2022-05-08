@@ -63,7 +63,7 @@ Additional modules of interest can be found in https://github.com/tve/mpy-lib, s
 
 Finally, some of the functionality depends on enhancements to MicroPython that are stuck
 in pull requests on mainline. These can be found integrated into the `tve` branch of
-https://github/tve/micropython.
+https://github.com/tve/micropython.
 
 ## Testing
 
